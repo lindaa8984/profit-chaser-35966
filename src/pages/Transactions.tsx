@@ -827,24 +827,24 @@ const Transactions = () => {
           <p className="text-muted-foreground text-sm mt-1">إدارة عمليات التحويل والصرف</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="ml-2 h-4 w-4" />
-            تصدير
+          <Button variant="outline" size="sm" onClick={handleExport} className="flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            <span>تصدير</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="ml-2 h-4 w-4" />
-            طباعة
+          <Button variant="outline" size="sm" onClick={handlePrint} className="flex items-center gap-2">
+            <Printer className="h-4 w-4" />
+            <span>طباعة</span>
           </Button>
           <Dialog open={isBanakOpen} onOpenChange={setIsBanakOpen}>
             <DialogTrigger asChild>
               <Button 
-                className="relative overflow-hidden"
+                className="relative overflow-hidden flex items-center gap-2"
                 style={{
                   background: 'linear-gradient(135deg, hsl(var(--banak-gradient-start)), hsl(var(--banak-gradient-end)))',
                 }}
               >
-                <Plus className="ml-2 h-4 w-4" />
-                إرسال بنكك
+                <Plus className="h-4 w-4" />
+                <span>إرسال بنكك</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1066,9 +1066,9 @@ const Transactions = () => {
           </Dialog>
           <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <Plus className="ml-2 h-4 w-4" />
-                عملية جديدة
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                <span>عملية جديدة</span>
               </Button>
             </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1294,13 +1294,13 @@ const Transactions = () => {
 
       
       <Card>
-        <CardHeader className="py-3">
-          <CardTitle className="text-lg">فلترة العمليات</CardTitle>
+        <CardHeader className="py-2 pb-1">
+          <CardTitle className="text-base">فلترة العمليات</CardTitle>
         </CardHeader>
-        <CardContent className="pt-3">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <CardContent className="pt-2 pb-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
             <div className="space-y-1">
-              <Label htmlFor="filterStartDate" className="text-sm">من تاريخ</Label>
+              <Label htmlFor="filterStartDate" className="text-xs">من تاريخ</Label>
               <Input
                 id="filterStartDate"
                 type="date"
@@ -1310,7 +1310,7 @@ const Transactions = () => {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="filterEndDate" className="text-sm">إلى تاريخ</Label>
+              <Label htmlFor="filterEndDate" className="text-xs">إلى تاريخ</Label>
               <Input
                 id="filterEndDate"
                 type="date"
@@ -1320,7 +1320,7 @@ const Transactions = () => {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="filterAccount" className="text-sm">الحساب/العميل</Label>
+              <Label htmlFor="filterAccount" className="text-xs">الحساب/العميل</Label>
               <Select value={filterAccountId} onValueChange={setFilterAccountId}>
                 <SelectTrigger id="filterAccount" className="h-9">
                   <SelectValue placeholder="جميع الحسابات" />
@@ -1352,7 +1352,7 @@ const Transactions = () => {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="filterDirection" className="text-sm">نوع التحويل</Label>
+              <Label htmlFor="filterDirection" className="text-xs">نوع التحويل</Label>
               <Select value={filterDirection} onValueChange={(v) => setFilterDirection(v as any)}>
                 <SelectTrigger id="filterDirection" className="h-9">
                   <SelectValue />
