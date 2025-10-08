@@ -1294,33 +1294,35 @@ const Transactions = () => {
 
       
       <Card>
-        <CardHeader>
-          <CardTitle>فلترة العمليات</CardTitle>
+        <CardHeader className="py-3">
+          <CardTitle className="text-lg">فلترة العمليات</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="filterStartDate">من تاريخ</Label>
+        <CardContent className="pt-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="filterStartDate" className="text-sm">من تاريخ</Label>
               <Input
                 id="filterStartDate"
                 type="date"
                 value={filterStartDate}
                 onChange={(e) => setFilterStartDate(e.target.value)}
+                className="h-9"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="filterEndDate">إلى تاريخ</Label>
+            <div className="space-y-1">
+              <Label htmlFor="filterEndDate" className="text-sm">إلى تاريخ</Label>
               <Input
                 id="filterEndDate"
                 type="date"
                 value={filterEndDate}
                 onChange={(e) => setFilterEndDate(e.target.value)}
+                className="h-9"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="filterAccount">الحساب/العميل</Label>
+            <div className="space-y-1">
+              <Label htmlFor="filterAccount" className="text-sm">الحساب/العميل</Label>
               <Select value={filterAccountId} onValueChange={setFilterAccountId}>
-                <SelectTrigger id="filterAccount">
+                <SelectTrigger id="filterAccount" className="h-9">
                   <SelectValue placeholder="جميع الحسابات" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
@@ -1349,10 +1351,10 @@ const Transactions = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="filterDirection">نوع التحويل</Label>
+            <div className="space-y-1">
+              <Label htmlFor="filterDirection" className="text-sm">نوع التحويل</Label>
               <Select value={filterDirection} onValueChange={(v) => setFilterDirection(v as any)}>
-                <SelectTrigger id="filterDirection">
+                <SelectTrigger id="filterDirection" className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
@@ -1374,15 +1376,15 @@ const Transactions = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-center min-w-[180px]">رقم العملية</TableHead>
-                <TableHead className="text-center min-w-[120px]">النوع</TableHead>
-                <TableHead className="text-center min-w-[100px]">من</TableHead>
-                <TableHead className="text-center min-w-[100px]">إلى</TableHead>
-                <TableHead className="text-center min-w-[120px]">المبلغ</TableHead>
-                <TableHead className="text-center min-w-[80px]">Rate</TableHead>
-                <TableHead className="text-center min-w-[100px]">الحالة</TableHead>
-                <TableHead className="text-center min-w-[140px]">التاريخ</TableHead>
-                <TableHead className="text-center min-w-[180px]">إجراءات</TableHead>
+                <TableHead className="text-center">رقم العملية</TableHead>
+                <TableHead className="text-center">النوع</TableHead>
+                <TableHead className="text-center">من</TableHead>
+                <TableHead className="text-center">إلى</TableHead>
+                <TableHead className="text-center">المبلغ</TableHead>
+                <TableHead className="text-center">Rate</TableHead>
+                <TableHead className="text-center">الحالة</TableHead>
+                <TableHead className="text-center">التاريخ</TableHead>
+                <TableHead className="text-center">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
