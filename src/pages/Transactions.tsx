@@ -826,7 +826,7 @@ const Transactions = () => {
           <h1 className="text-2xl font-bold">العمليات</h1>
           <p className="text-muted-foreground text-sm mt-1">إدارة عمليات التحويل والصرف</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 no-print">
           <Button variant="outline" size="sm" onClick={handleExport} className="flex items-center gap-2">
             <Download className="h-4 w-4" />
             <span>تصدير</span>
@@ -1368,7 +1368,7 @@ const Transactions = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="transaction-log-card">
         <CardHeader>
           <CardTitle>سجل العمليات</CardTitle>
         </CardHeader>

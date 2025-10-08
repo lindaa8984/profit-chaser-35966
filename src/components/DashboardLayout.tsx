@@ -27,9 +27,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'الرئيسية' },
     { path: '/vaults', icon: Wallet, label: 'الأرصدة' },
+    { path: '/transactions', icon: ArrowRightLeft, label: 'العمليات' },
     { path: '/customers', icon: Users, label: 'العملاء' },
     { path: '/suppliers', icon: PackageSearch, label: 'الموردين' },
-    { path: '/transactions', icon: ArrowRightLeft, label: 'العمليات' },
     { path: '/rates', icon: TrendingUp, label: 'أسعار الصرف' },
     { path: '/reports', icon: FileText, label: 'التقارير' },
     { path: '/settings', icon: Settings, label: 'الإعدادات' },

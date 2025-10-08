@@ -142,3 +142,47 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Print styles - only show transaction log */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show only the transaction log card and its contents */
+  #transaction-log-card,
+  #transaction-log-card * {
+    visibility: visible;
+  }
+  
+  /* Position the transaction log at the top of the page */
+  #transaction-log-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  
+  /* Hide buttons and other interactive elements in print */
+  button,
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Ensure table fits on page */
+  table {
+    page-break-inside: auto;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  
+  /* Remove background colors for better printing */
+  * {
+    background: white !important;
+    color: black !important;
+  }
+}
