@@ -1395,15 +1395,10 @@ const Transactions = () => {
                   <TableRow 
                     key={tx.id}
                     className={isBanak ? 'relative' : ''}
+                    style={isBanak ? { 
+                      background: 'linear-gradient(90deg, hsl(var(--banak-gradient-start)/0.08), hsl(var(--banak-gradient-end)/0.08))'
+                    } : undefined}
                   >
-                    {isBanak && (
-                      <td 
-                        className="absolute inset-0 pointer-events-none opacity-10"
-                        style={{
-                          background: 'linear-gradient(90deg, hsl(var(--banak-gradient-start)), hsl(var(--banak-gradient-end)))',
-                        }}
-                      />
-                    )}
                     <TableCell className="font-medium text-center tabular-nums relative z-10 whitespace-nowrap" dir="ltr">
                       {tx.transactionNumber}
                     </TableCell>
@@ -1416,12 +1411,30 @@ const Transactions = () => {
                     <TableCell className="text-center relative z-10 whitespace-nowrap">{accountInfo.from}</TableCell>
                     <TableCell className="text-center relative z-10 whitespace-nowrap">{accountInfo.to}</TableCell>
                     <TableCell className="text-center whitespace-nowrap tabular-nums relative z-10" dir="ltr">
-                      <div className="flex flex-col items-center">
-                        <span>{tx.amount.toLocaleString()} {tx.currency || tx.fromCurrency}</span>
-                        {tx.type === 'transfer' && tx.fromCurrency !== tx.toCurrency && (
-                          <span className="text-xs text-muted-foreground">→ {tx.toCurrency}</span>
-                        )}
-                      </div>
+                      {/* عرض المبلغ المستلم */}
+                      {isBanak ? (
+                        <div className="flex flex-col items-center">
+                          <span className="font-semibold">
+                            {tx.exchangeRate ? (tx.amount / tx.exchangeRate).toLocaleString() : tx.amount.toLocaleString()} AED
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            بنكك: {tx.amount.toLocaleString()} SDG
+                          </span>
+                        </div>
+                      ) : tx.type === 'transfer' && tx.fromCurrency !== tx.toCurrency && tx.exchangeRate ? (
+                        <div className="flex flex-col items-center">
+                          <span className="font-semibold">
+                            {(tx.fromCurrency === 'SDG' ? (tx.amount / tx.exchangeRate) : (tx.amount * tx.exchangeRate)).toLocaleString()} {tx.toCurrency}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({tx.amount.toLocaleString()} {tx.fromCurrency})
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center">
+                          <span>{tx.amount.toLocaleString()} {tx.currency || tx.fromCurrency}</span>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-center tabular-nums relative z-10 whitespace-nowrap" dir="ltr">
                       {tx.exchangeRate ? (
