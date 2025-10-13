@@ -1,0 +1,274 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 215 25% 15%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 142 76% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 31.8% 91.4%;
+    --input: 214 31.8% 91.4%;
+    --ring: 142 76% 36%;
+
+    --radius: 0.5rem;
+    
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    
+    --info: 221 83% 53%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Chart gradients */
+    --chart-profit-start: 142 76% 45%;
+    --chart-profit-end: 142 71% 55%;
+    --chart-loss-start: 0 84% 60%;
+    --chart-loss-end: 0 72% 51%;
+    
+    /* Banak transfer gradient */
+    --banak-gradient-start: 210 100% 56%;
+    --banak-gradient-end: 142 76% 50%;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 224 71% 4%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 142 76% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 32.6% 17.5%;
+    --input: 217 32.6% 17.5%;
+    --ring: 142 76% 36%;
+    
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    
+    --info: 221 83% 53%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Chart gradients */
+    --chart-profit-start: 142 76% 45%;
+    --chart-profit-end: 142 71% 55%;
+    --chart-loss-start: 0 72% 51%;
+    --chart-loss-end: 0 62% 40%;
+    
+    /* Banak transfer gradient */
+    --banak-gradient-start: 210 100% 56%;
+    --banak-gradient-end: 142 76% 50%;
+    
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Print styles - only show transaction log */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show only the transaction log card and its contents */
+  #transaction-log-card,
+  #transaction-log-card * {
+    visibility: visible;
+  }
+  
+  /* Position the transaction log at the top of the page */
+  #transaction-log-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible !important;
+  }
+  
+  /* Hide buttons and other interactive elements in print */
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Hide actions column */
+  #transaction-log-card th:last-child,
+  #transaction-log-card td:last-child {
+    display: none !important;
+  }
+  
+  /* Ensure table fits on page without horizontal scroll */
+  #transaction-log-card table {
+    width: 100% !important;
+    table-layout: auto !important;
+    page-break-inside: auto;
+  }
+  
+  #transaction-log-card tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  
+  #transaction-log-card th,
+  #transaction-log-card td {
+    font-size: 10px !important;
+    padding: 6px 4px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Alternating row colors for better readability */
+  #transaction-log-card tbody tr:nth-child(odd) {
+    background-color: #e0f2fe !important;
+    background-image: none !important;
+  }
+  
+  #transaction-log-card tbody tr:nth-child(even) {
+    background-color: white !important;
+    background-image: none !important;
+  }
+  
+  /* Table header styling */
+  #transaction-log-card thead tr {
+    background: #e2e8f0 !important;
+    border-bottom: 2px solid #94a3b8 !important;
+  }
+  
+  #transaction-log-card thead th {
+    font-weight: bold !important;
+    color: #1e293b !important;
+  }
+  
+  /* Remove gradient backgrounds from print */
+  #transaction-log-card tbody tr[style] {
+    background-color: inherit !important;
+    background-image: none !important;
+  }
+  
+  #transaction-log-card tbody tr {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Style totals section for print */
+  #transaction-log-card .border-t {
+    border-top: 2px solid #1e293b !important;
+    padding-top: 1rem !important;
+    margin-top: 1rem !important;
+  }
+  
+  /* Remove scrollbars in print */
+  #transaction-log-card .overflow-x-auto {
+    overflow: visible !important;
+  }
+  
+  /* Hide browser-generated headers/footers (URL, date, etc) */
+  @page {
+    margin: 0.5cm;
+    size: A4 portrait;
+  }
+  
+  /* Add page title at top */
+  #transaction-log-card::before {
+    content: "";
+    display: block;
+    height: 0;
+  }
+  
+  /* Totals section styling */
+  #transaction-log-card .print-show {
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  #transaction-log-card .print-show p {
+    color: #1e293b !important;
+  }
+  
+  #transaction-log-card .print-show .text-primary {
+    color: #059669 !important;
+  }
+}
+
