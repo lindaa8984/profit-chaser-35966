@@ -3,15 +3,15 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { format } from "date-fns";
+import { t } from "@/lib/translations";
 
 export function RevenueChart() {
-  const { payments, currency } = useApp();
+  const { payments, currency, language } = useApp();
   
-  const currencySymbols = {
-    SAR: "ر.س",
-    USD: "USD", 
-    EUR: "€",
-    AED: "د.إ"
+  const getCurrencySymbol = (code: string) => {
+    const ar = { SAR: "ر.س", AED: "د.إ", USD: "دولار", EUR: "€" } as const;
+    const en = { SAR: "SAR", AED: "AED", USD: "USD", EUR: "€" } as const;
+    return (language === 'ar' ? ar : en)[code as keyof typeof ar] ?? code;
   };
 
   // تجميع البيانات حسب الشهر من المدفوعات المستلمة
@@ -63,10 +63,10 @@ export function RevenueChart() {
         <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
           <p className="font-medium text-foreground">{label}</p>
           <p className="text-sm text-success">
-            الإيراد: {data.revenue.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+            {t("dashboard.revenue", language)} {data.revenue.toLocaleString()} {getCurrencySymbol(currency)}
           </p>
           <p className="text-xs text-muted-foreground">
-            عدد الدفعات: {data.count}
+            {t("dashboard.paymentCount", language)} {data.count}
           </p>
         </div>
       );
@@ -79,7 +79,7 @@ export function RevenueChart() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-primary" />
-          الإيراد الشهري
+          {t("dashboard.monthlyRevenue", language)}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -109,23 +109,23 @@ export function RevenueChart() {
         
         <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
           <div className="text-center">
-            <p className="text-xs text-muted-foreground">إجمالي الإيراد</p>
+            <p className="text-xs text-muted-foreground">{t("dashboard.totalRevenue", language)}</p>
             <p className="text-sm font-bold text-success">
-              {totalRevenue.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+              {totalRevenue.toLocaleString()} {getCurrencySymbol(currency)}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-muted-foreground">متوسط شهري</p>
+            <p className="text-xs text-muted-foreground">{t("dashboard.monthlyAverage", language)}</p>
             <p className="text-sm font-bold text-primary">
-              {avgMonthlyRevenue.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+              {avgMonthlyRevenue.toLocaleString()} {getCurrencySymbol(currency)}
             </p>
           </div>
         </div>
         
         {chartData.length === 0 && (
           <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">لا توجد بيانات إيراد حالياً</p>
-            <p className="text-xs text-muted-foreground">سيتم عرض البيانات عند وجود دفعات مستلمة</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.noRevenueData", language)}</p>
+            <p className="text-xs text-muted-foreground">{t("dashboard.dataWillAppear", language)}</p>
           </div>
         )}
       </CardContent>

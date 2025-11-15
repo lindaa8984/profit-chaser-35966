@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Minus, ToggleLeft, ToggleRight, Info } from "lucide-react";
 import { UnitDetailsDialog } from "@/components/UnitDetailsDialog";
 import { useApp } from "@/contexts/AppContext";
@@ -17,6 +18,7 @@ interface Unit {
   number: string;
   floor: number;
   isAvailable: boolean;
+  unitType?: 'residential' | 'commercial';
 }
 
 interface UnitsManagementProps {
@@ -42,6 +44,7 @@ export function UnitsManagement({
   const [units, setUnits] = useState<Unit[]>([]);
   const [isManualMode, setIsManualMode] = useState(false);
   const [newUnitNumber, setNewUnitNumber] = useState("");
+  const [newUnitType, setNewUnitType] = useState<'residential' | 'commercial'>('residential');
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [showUnitDetails, setShowUnitDetails] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -60,6 +63,7 @@ export function UnitsManagement({
       for (let unit = 1; unit <= unitsPerFloor; unit++) {
         let unitNumber = "";
         
+        // ترقيم موحد: 101-102-201-202...
         if (unitFormat === "101") {
           unitNumber = `${floor}${unit.toString().padStart(2, '0')}`;
         } else if (unitFormat === "01") {
@@ -77,6 +81,7 @@ export function UnitsManagement({
           number: unitNumber,
           floor: floor,
           isAvailable: true, // All available by default
+          unitType: 'residential' // Default to residential
         });
       }
     }
@@ -208,6 +213,7 @@ export function UnitsManagement({
       number: newUnitNumber,
       floor: 1, // Default floor for manual units
       isAvailable: true,
+      unitType: newUnitType,
     };
 
     const updatedUnits = [...units, newUnit];
@@ -310,6 +316,15 @@ export function UnitsManagement({
         {isManualMode && (
           <div className="space-y-3">
             <div className="flex gap-2">
+              <Select value={newUnitType} onValueChange={(value: 'residential' | 'commercial') => setNewUnitType(value)}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="residential">سكنية</SelectItem>
+                  <SelectItem value="commercial">تجارية</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
                 placeholder="رقم الوحدة (مثال: 101)"
                 value={newUnitNumber}
@@ -347,7 +362,12 @@ export function UnitsManagement({
                       toggleUnitAvailability(unit.number);
                     }}
                   >
-                    <span className="text-sm font-medium">{unit.number}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium">{unit.number}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {unit.unitType === 'commercial' ? 'تجاري' : 'سكني'}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1">
                       {isOccupied && property && (
                         <Info className="h-3 w-3 text-muted-foreground" />

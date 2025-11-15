@@ -14,7 +14,7 @@ interface ImportDialogProps {
 }
 
 export function ImportDialog({ open, onClose, section }: ImportDialogProps) {
-  const { addProperty, addClient, addContract } = useApp();
+  const { addProperty, addClient, addContract, properties, clients } = useApp();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,12 +129,55 @@ export function ImportDialog({ open, onClose, section }: ImportDialogProps) {
               email: item["البريد الإلكتروني"] || item.email || "",
               phone: item["رقم الهاتف"] || item.phone || "",
               type: item["النوع"] || item.type || "tenant",
-              address: "",
-              idNumber: "",
-              nationality: "",
+              address: item["العنوان"] || item.address || "",
+              idNumber: item["رقم الهوية"] || item.idNumber || "",
+              nationality: item["الجنسية"] || item.nationality || "",
               properties: []
             });
             importCount++;
+            break;
+            
+          case "contracts":
+            // Extract property and client names to match IDs
+            const propertyName = item["العقار المرتبط"] || item.propertyName || "";
+            const clientName = item["اسم العميل"] || item.clientName || "";
+            
+            // Find matching property and client
+            const matchedProperty = properties.find(p => p.name === propertyName);
+            const matchedClient = clients.find(c => c.name === clientName);
+            
+            if (matchedProperty && matchedClient) {
+              const parseDateString = (dateStr: string) => {
+                // Handle DD/MM/YYYY format
+                if (dateStr && dateStr.includes('/')) {
+                  const parts = dateStr.split('/');
+                  if (parts.length === 3) {
+                    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                  }
+                }
+                return dateStr;
+              };
+              
+              addContract({
+                propertyId: matchedProperty.id,
+                clientId: matchedClient.id,
+                startDate: parseDateString(item["تاريخ البداية"] || item.startDate || ""),
+                endDate: parseDateString(item["تاريخ النهاية"] || item.endDate || ""),
+                monthlyRent: parseFloat((item["قيمة الإيجار"] || item.monthlyRent || "0").toString().replace(/[^\d.]/g, '')),
+                paymentMethod: item["طريقة الدفع"] || item.paymentMethod || "cash",
+                paymentSchedule: item["عدد الدفعات"] || item.numberOfPayments || "1",
+                currency: "AED",
+                unitNumber: item["رقم الوحدة"] || item.unitNumber || "",
+                numberOfPayments: item["عدد الدفعات"] || item.numberOfPayments || "1",
+                bankName: item["البنك"] || item.bankName || "",
+                checkNumbers: item["أرقام الشيكات"] || item.checkNumbers || "",
+                paymentDates: "",
+                checkDates: "",
+                paymentAmounts: "",
+                status: "active"
+              });
+              importCount++;
+            }
             break;
             
           default:

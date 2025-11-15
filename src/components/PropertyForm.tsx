@@ -23,9 +23,9 @@ export function PropertyForm() {
     totalUnits: "",
     availableUnits: "",
     status: "available",
-    useIntelligentNumbering: false,
+    useIntelligentNumbering: true, // تفعيل الترقيم الذكي افتراضياً
     unitsPerFloor: "",
-    unitFormat: "101",
+    unitFormat: "101", // الترقيم الافتراضي 101-102-201-202
   });
 
   const calculateTotalUnits = () => {
@@ -87,9 +87,9 @@ export function PropertyForm() {
       totalUnits: "", 
       availableUnits: "", 
       status: "available",
-      useIntelligentNumbering: false,
+      useIntelligentNumbering: true, // الترقيم الذكي افتراضياً
       unitsPerFloor: "",
-      unitFormat: "101",
+      unitFormat: "101", // 101-102-201-202...
     });
     setCustomUnits([]);
     setOpen(false);

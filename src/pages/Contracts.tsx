@@ -5,15 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, FileText, Calendar, User, Edit2, Eye, RefreshCw, Download, Trash2, Shield, Upload } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, FileText, Calendar, User, Edit2, Eye, RefreshCw, Download, Trash2, Upload, Filter, X } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { ContractForm } from "@/components/ContractForm";
 import { ContractDetailsDialog } from "@/components/ContractDetailsDialog";
 import { ContractExportDialog } from "@/components/ContractExportDialog";
 import { ContractRenewalDialog } from "@/components/ContractRenewalDialog";
-import { BackupDialog } from "@/components/BackupDialog";
-import { IntelligentImportDialog } from "@/components/IntelligentImportDialog";
 
+import { IntelligentImportDialog } from "@/components/IntelligentImportDialog";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function Contracts() {
@@ -25,10 +26,11 @@ export default function Contracts() {
   const [selectedContract, setSelectedContract] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenewalDialog, setShowRenewalDialog] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
+  const [selectedPropertyFilter, setSelectedPropertyFilter] = useState<number | null>(null);
   const [showCreateContractForm, setShowCreateContractForm] = useState(false);
   const [prefilledData, setPrefilledData] = useState<any>(null);
 
@@ -76,29 +78,53 @@ export default function Contracts() {
     return client ? client.name : "عميل غير موجود";
   };
 
-  const filteredContracts = contracts.filter(contract => {
-    const propertyName = getPropertyName(contract.propertyId);
-    const clientName = getClientName(contract.clientId);
-    const matchesSearch = propertyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           clientName.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    let matchesFilter = true;
-    if (filterType === 'expiring') {
-      const endDate = new Date(contract.endDate);
-      const today = new Date();
-      const diffTime = endDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      matchesFilter = diffDays <= 30 && diffDays > 0 && contract.status !== 'terminated';
-    } else if (filterType === 'terminated') {
-      matchesFilter = contract.status === 'terminated';
-    } else if (filterType === 'active') {
-      matchesFilter = contract.status !== 'terminated';
-    }
-    
-    return matchesSearch && matchesFilter;
-  });
+  const filteredContracts = contracts
+    .filter(contract => {
+      const propertyName = getPropertyName(contract.propertyId);
+      const clientName = getClientName(contract.clientId);
+      const matchesSearch = propertyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             clientName.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      let matchesFilter = true;
+      if (filterType === 'expiring') {
+        const endDate = new Date(contract.endDate);
+        const today = new Date();
+        const diffTime = endDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        matchesFilter = diffDays <= 30 && diffDays > 0 && contract.status !== 'terminated';
+      } else if (filterType === 'terminated') {
+        matchesFilter = contract.status === 'terminated';
+      } else if (filterType === 'active') {
+        matchesFilter = contract.status !== 'terminated';
+      }
+
+      // فلترة حسب العقار المحدد
+      let matchesProperty = true;
+      if (selectedPropertyFilter !== null) {
+        matchesProperty = contract.propertyId === selectedPropertyFilter;
+      }
+      
+      return matchesSearch && matchesFilter && matchesProperty;
+    })
+    .sort((a, b) => {
+      // ترتيب حسب رقم الوحدة
+      if (!a.unitNumber || !b.unitNumber) return 0;
+      
+      // استخراج الأرقام من رقم الوحدة
+      const numA = parseInt(a.unitNumber.replace(/[^0-9]/g, '')) || 0;
+      const numB = parseInt(b.unitNumber.replace(/[^0-9]/g, '')) || 0;
+      
+      return numA - numB;
+    });
 
   const getPaymentScheduleLabel = (schedule: string) => {
+    const numPayments = parseInt(schedule);
+    if (!isNaN(numPayments)) {
+      return numPayments === 1 ? "دفعة واحدة" : 
+             numPayments === 2 ? "دفعتين" : 
+             `${numPayments} دفعات`;
+    }
+    // للتوافق مع البيانات القديمة
     switch(schedule) {
       case "monthly": return "شهري";
       case "quarterly": return "ربع سنوي";
@@ -140,6 +166,58 @@ export default function Contracts() {
           <p className="text-muted-foreground">إدارة عقود الإيجار والبيع</p>
         </div>
         <div className="flex gap-2">
+          <div className="relative">
+            <Button 
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              variant="outline"
+            >
+              <Filter className="h-4 w-4 mr-1" />
+              {filterType === 'all' ? 'جميع العقود' : 
+               filterType === 'active' ? 'العقود النشطة' : 
+               filterType === 'expiring' ? 'على وشك الانتهاء' : 
+               'العقود المنتهية'}
+            </Button>
+            {showFilterDropdown && (
+              <div className="absolute left-0 mt-2 w-48 bg-background border border-border rounded-md shadow-lg z-50">
+                <button
+                  onClick={() => {
+                    setFilterType('all');
+                    setShowFilterDropdown(false);
+                  }}
+                  className="w-full text-right px-4 py-2 hover:bg-accent transition-colors"
+                >
+                  جميع العقود
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterType('active');
+                    setShowFilterDropdown(false);
+                  }}
+                  className="w-full text-right px-4 py-2 hover:bg-accent transition-colors"
+                >
+                  العقود النشطة
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterType('expiring');
+                    setShowFilterDropdown(false);
+                  }}
+                  className="w-full text-right px-4 py-2 hover:bg-accent transition-colors"
+                >
+                  على وشك الانتهاء
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterType('terminated');
+                    setShowFilterDropdown(false);
+                  }}
+                  className="w-full text-right px-4 py-2 hover:bg-accent transition-colors"
+                >
+                  العقود المنتهية
+                </button>
+              </div>
+            )}
+          </div>
           <Button 
             onClick={() => setShowExportDialog(true)}
             variant="outline"
@@ -148,20 +226,13 @@ export default function Contracts() {
             تصدير
           </Button>
           <Button 
-            onClick={() => setShowBackupDialog(true)}
-            variant="outline"
-          >
-            <Shield className="h-4 w-4 mr-1" />
-            نسخ احتياطي
-          </Button>
-          <Button 
             onClick={() => setShowImportDialog(true)}
             variant="outline"
           >
             <Upload className="h-4 w-4 mr-1" />
             استيراد
           </Button>
-          <ContractForm 
+          <ContractForm
             prefilledData={prefilledData}
             onClose={() => {
               setShowCreateContractForm(false);
@@ -171,10 +242,10 @@ export default function Contracts() {
         </div>
       </div>
 
-      {/* Search and Filter */}
+      {/* Search and Property Filter */}
       <Card className="shadow-soft">
         <CardContent className="p-6">
-          <div className="flex gap-4">
+          <div className="flex gap-4 flex-col sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -184,22 +255,40 @@ export default function Contracts() {
                 className="pl-10"
               />
             </div>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-3 py-2 border border-border rounded-md bg-background"
-            >
-              <option value="all">جميع العقود</option>
-              <option value="active">العقود النشطة</option>
-              <option value="expiring">على وشك الانتهاء</option>
-              <option value="terminated">العقود المنتهية</option>
-            </select>
+            <div className="flex gap-2 items-center min-w-[250px]">
+              <Select 
+                value={selectedPropertyFilter?.toString() || "all"} 
+                onValueChange={(value) => setSelectedPropertyFilter(value === "all" ? null : parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="جميع العقارات" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">جميع العقارات</SelectItem>
+                  {properties.map(property => (
+                    <SelectItem key={property.id} value={property.id.toString()}>
+                      {property.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedPropertyFilter !== null && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedPropertyFilter(null)}
+                  className="h-10 w-10 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Contracts Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredContracts.map((contract) => (
           <Card key={contract.id} className={`shadow-soft hover:shadow-elegant transition-shadow duration-300 group ${contract.status === 'terminated' ? 'opacity-75 border-muted' : ''}`}>
             <CardHeader className="pb-3">
@@ -227,20 +316,27 @@ export default function Contracts() {
                 <User className="h-4 w-4" />
                 {getClientName(contract.clientId)}
               </div>
+              {contract.unitNumber && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <FileText className="h-4 w-4" />
+                  <span>وحدة: {contract.unitNumber}</span>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar className="h-4 w-4" />
-                {contract.startDate} - {contract.endDate}
+                <span dir="ltr">{formatDateDDMMYYYY(contract.startDate)} - {formatDateDDMMYYYY(contract.endDate)}</span>
                 {contract.status === 'terminated' && contract.terminatedDate && (
-                  <span className="text-xs text-destructive">(أنهي في: {contract.terminatedDate})</span>
+                  <span className="text-xs text-destructive" dir="ltr">(أنهي في: {formatDateDDMMYYYY(contract.terminatedDate)})</span>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-1.5 pt-2">
                 <Button 
                   variant="outline" 
                   size="sm"
+                  className="h-8 text-xs"
                   onClick={() => handleView(contract)}
                 >
-                  <Eye className="h-3 w-3 mr-1" />
+                  <Eye className="h-2.5 w-2.5 mr-1" />
                   عرض
                 </Button>
                 {contract.status !== 'terminated' && (
@@ -248,26 +344,28 @@ export default function Contracts() {
                     <Button 
                       variant="outline" 
                       size="sm"
+                      className="h-8 text-xs"
                       onClick={() => handleEdit(contract)}
                     >
-                      <Edit2 className="h-3 w-3 mr-1" />
+                      <Edit2 className="h-2.5 w-2.5 mr-1" />
                       تعديل
                     </Button>
                     <Button 
                       variant="outline" 
                       size="sm"
+                      className="h-8 text-xs"
                       onClick={() => handleRenew(contract)}
                     >
-                      <RefreshCw className="h-3 w-3 mr-1" />
+                      <RefreshCw className="h-2.5 w-2.5 mr-1" />
                       تجديد
                     </Button>
                     <Button 
                       variant="outline" 
                       size="sm"
-                      className="text-destructive hover:text-destructive"
+                      className="h-8 text-xs text-destructive hover:text-destructive"
                       onClick={() => handleTerminate(contract)}
                     >
-                      <Trash2 className="h-3 w-3 mr-1" />
+                      <Trash2 className="h-2.5 w-2.5 mr-1" />
                       إنهاء
                     </Button>
                   </>
@@ -327,15 +425,8 @@ export default function Contracts() {
         onClose={() => setShowExportDialog(false)}
       />
 
-      {/* Backup Dialog */}
-      <BackupDialog 
-        open={showBackupDialog}
-        onClose={() => setShowBackupDialog(false)}
-        section="contracts"
-      />
-
       {/* Intelligent Import Dialog */}
-      <IntelligentImportDialog 
+      <IntelligentImportDialog
         open={showImportDialog}
         onClose={() => setShowImportDialog(false)}
       />

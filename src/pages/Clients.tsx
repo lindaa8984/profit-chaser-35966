@@ -12,10 +12,11 @@ import { ClientDetailsDialog } from "@/components/ClientDetailsDialog";
 import { ClientExportDialog } from "@/components/ClientExportDialog";
 import { BackupDialog } from "@/components/BackupDialog";
 import { IntelligentImportDialog } from "@/components/IntelligentImportDialog";
+import { ClientDeleteButton } from "@/components/ClientDeleteButton";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Clients() {
-  const { clients, properties, deleteClient } = useApp();
+  const { clients, properties } = useApp();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -37,13 +38,6 @@ export default function Clients() {
     }
   };
 
-  const handleDeleteClient = (clientId: number) => {
-    deleteClient(clientId);
-    toast({
-      title: "تم الحذف بنجاح",
-      description: "تم حذف العميل بنجاح",
-    });
-  };
 
   const getPropertyNames = (propertyIds: number[]) => {
     return propertyIds.map(id => {
@@ -53,13 +47,13 @@ export default function Clients() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">العملاء</h1>
-          <p className="text-muted-foreground">إدارة قاعدة بيانات العملاء</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">العملاء</h1>
+          <p className="text-sm text-muted-foreground">إدارة قاعدة بيانات العملاء</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button 
             onClick={() => setShowExportDialog(true)}
             variant="outline"
@@ -101,7 +95,7 @@ export default function Clients() {
       </Card>
 
       {/* Clients Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredClients.map((client) => (
           <Card key={client.id} className="shadow-soft hover:shadow-elegant transition-shadow duration-300 group h-full flex flex-col">
             <CardHeader className="pb-3">
@@ -117,13 +111,13 @@ export default function Clients() {
                 <User className="h-5 w-5 text-muted-foreground" />
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 flex-1 flex flex-col">
+            <CardContent className="flex-1 flex flex-col gap-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Phone className="h-3 w-3" />
                 {client.phone}
               </div>
               
-              <div className="text-sm min-h-[3rem] flex flex-col justify-start">
+              <div className="text-sm flex-1 flex flex-col justify-start">
                 {client.properties.length > 0 ? (
                   <>
                     <p className="text-muted-foreground text-xs">العقارات</p>
@@ -155,14 +149,7 @@ export default function Clients() {
                      </Button>
                    }
                  />
-                  <Button 
-                    variant="destructive" 
-                    size="sm" 
-                    onClick={() => handleDeleteClient(client.id)}
-                    className="flex-1 text-xs h-7"
-                  >
-                    حذف
-                  </Button>
+                  <ClientDeleteButton client={client} />
                </div>
             </CardContent>
           </Card>

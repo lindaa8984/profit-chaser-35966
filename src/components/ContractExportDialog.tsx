@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Download, Cloud, FileSpreadsheet } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import * as XLSX from 'xlsx';
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 interface ContractExportDialogProps {
   open: boolean;
@@ -52,8 +53,8 @@ export function ContractExportDialog({ open, onClose }: ContractExportDialogProp
         "اسم العميل": getClientName(contract.clientId),
         "العقار المرتبط": getPropertyName(contract.propertyId),
         "قيمة الإيجار": `${contract.monthlyRent.toLocaleString()} ${currencySymbols[currency as keyof typeof currencySymbols]}`,
-        "تاريخ البداية": contract.startDate,
-        "تاريخ النهاية": contract.endDate,
+        "تاريخ البداية": formatDateDDMMYYYY(contract.startDate),
+        "تاريخ النهاية": formatDateDDMMYYYY(contract.endDate),
         "طريقة الدفع": getPaymentMethodLabel(contract.paymentMethod),
         "عدد الدفعات": contract.numberOfPayments || "غير محدد",
         "رقم الوحدة": contract.unitNumber || "غير محدد",

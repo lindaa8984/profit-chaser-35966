@@ -11,6 +11,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import Dashboard from "./pages/Dashboard";
 import Properties from "./pages/Properties";
+import Shops from "./pages/Shops";
+import GroundHouses from "./pages/GroundHouses";
 import Clients from "./pages/Clients";
 import Contracts from "./pages/Contracts";
 import Payments from "./pages/Payments";
@@ -20,6 +22,8 @@ import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import AdminRoute from "./components/AdminRoute";
+import CreateAdminUser from "./pages/CreateAdminUser";
+import Companies from "./pages/Companies";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +49,20 @@ const App = () => (
                   <ProtectedRoute>
                     <Layout>
                       <Properties />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/shops" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Shops />
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/ground-houses" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <GroundHouses />
                     </Layout>
                   </ProtectedRoute>
                 } />
@@ -86,6 +104,16 @@ const App = () => (
                 <Route path="/admin" element={
                   <AdminRoute>
                     <Admin />
+                  </AdminRoute>
+                } />
+                <Route path="/companies" element={
+                  <AdminRoute>
+                    <Companies />
+                  </AdminRoute>
+                } />
+                <Route path="/create-admin" element={
+                  <AdminRoute>
+                    <CreateAdminUser />
                   </AdminRoute>
                 } />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

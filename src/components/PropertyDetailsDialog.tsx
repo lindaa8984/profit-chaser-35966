@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Property } from "@/contexts/AppContext";
 import { useApp } from "@/contexts/AppContext";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MapPin, Building2, Layers, Users, Hash } from "lucide-react";
 
 interface PropertyDetailsDialogProps {
@@ -15,7 +16,7 @@ interface PropertyDetailsDialogProps {
 }
 
 export function PropertyDetailsDialog({ property, trigger, isEdit = false }: PropertyDetailsDialogProps) {
-  const { updateProperty, currency } = useApp();
+  const { updateProperty, currency, contracts } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState(property);
   const currencySymbols = {
@@ -27,8 +28,33 @@ export function PropertyDetailsDialog({ property, trigger, isEdit = false }: Pro
     QAR: "ر.ق"
   };
 
+  // حساب الوحدات المتاحة الفعلية بناءً على العقود النشطة
+  const getActualAvailableUnits = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const actualTotalUnits = property.units?.length || property.totalUnits;
+    
+    const activeContracts = contracts.filter(c => {
+      const endDate = new Date(c.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      
+      return c.propertyId === property.id && 
+        endDate >= today &&
+        c.status !== 'terminated';
+    });
+
+    const occupiedUnits = activeContracts.length;
+    return Math.max(0, actualTotalUnits - occupiedUnits);
+  };
+
+  const actualAvailableUnits = getActualAvailableUnits();
+  const actualTotalUnits = property.units?.length || property.totalUnits;
+
   const handleSave = () => {
-    updateProperty(property.id, formData);
+    // نمرر فقط الحقول القابلة للتعديل ونتجنب تمرير الوحدات
+    const { name, location, floors, totalUnits, price, unitsPerFloor, unitFormat, status, type, currency } = formData;
+    updateProperty(property.id, { name, location, floors, totalUnits, price, unitsPerFloor, unitFormat, status, type, currency });
     setIsOpen(false);
   };
 
@@ -98,7 +124,7 @@ export function PropertyDetailsDialog({ property, trigger, isEdit = false }: Pro
                       <Users className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium text-muted-foreground">إجمالي الوحدات</span>
                     </div>
-                    <p className="text-2xl font-bold text-primary">{property.totalUnits}</p>
+                    <p className="text-2xl font-bold text-primary">{actualTotalUnits}</p>
                   </div>
                   
                   <div className="bg-success/10 rounded-lg p-4 text-center border border-success/20">
@@ -106,7 +132,7 @@ export function PropertyDetailsDialog({ property, trigger, isEdit = false }: Pro
                       <Hash className="h-4 w-4 text-success" />
                       <span className="text-sm font-medium text-success">المتاحة</span>
                     </div>
-                    <p className="text-2xl font-bold text-success">{property.availableUnits}</p>
+                    <p className="text-2xl font-bold text-success">{actualAvailableUnits}</p>
                   </div>
                 </div>
               </div>
@@ -117,11 +143,11 @@ export function PropertyDetailsDialog({ property, trigger, isEdit = false }: Pro
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">الوحدات المشغولة:</span>
-                    <span className="font-medium text-destructive">{property.totalUnits - property.availableUnits}</span>
+                    <span className="font-medium text-destructive">{actualTotalUnits - actualAvailableUnits}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">معدل الإشغال:</span>
-                    <span className="font-medium">{Math.round(((property.totalUnits - property.availableUnits) / property.totalUnits) * 100)}%</span>
+                    <span className="font-medium">{actualTotalUnits > 0 ? Math.round(((actualTotalUnits - actualAvailableUnits) / actualTotalUnits) * 100) : 0}%</span>
                   </div>
                 </div>
               </div>
@@ -183,16 +209,52 @@ export function PropertyDetailsDialog({ property, trigger, isEdit = false }: Pro
                     onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
                   />
                 </div>
+                <div>
+                  <Label htmlFor="unitsPerFloor">الوحدات في كل طابق</Label>
+                  <Input
+                    id="unitsPerFloor"
+                    type="number"
+                    value={formData.unitsPerFloor || ''}
+                    onChange={(e) => setFormData({...formData, unitsPerFloor: Number(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="unitFormat">نظام ترقيم الوحدات</Label>
+                  <Select
+                    value={formData.unitFormat || '101'}
+                    onValueChange={(value) => setFormData({...formData, unitFormat: value})}
+                  >
+                    <SelectTrigger id="unitFormat">
+                      <SelectValue placeholder="اختر نظام الترقيم" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="101">رقم الطابق + رقم الوحدة (101، 102، 201)</SelectItem>
+                      <SelectItem value="01">ترقيم متسلسل (01، 02، 03)</SelectItem>
+                      <SelectItem value="1">ترقيم بسيط (1، 2، 3)</SelectItem>
+                      <SelectItem value="A1">حرف + رقم (A1، A2، B1)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleSave} className="flex-1">
+                <Button onClick={handleSave} className="flex-1 bg-gradient-primary">
                   حفظ التغييرات
                 </Button>
-                <Button variant="outline" onClick={() => setIsOpen(false)}>
+                <Button variant="outline" className="flex-1" onClick={() => setIsOpen(false)}>
                   إلغاء
                 </Button>
               </div>
+              
+              {/* معلومة مهمة */}
+              {(formData.unitFormat !== property.unitFormat || formData.unitsPerFloor !== property.unitsPerFloor || formData.floors !== property.floors) && (
+                <div className="mt-2 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm">
+                  <p className="text-primary font-medium">💡 ملاحظة هامة</p>
+                  <p className="text-muted-foreground mt-1">
+                    عند تغيير نظام ترقيم الوحدات، سيتم تحديث أرقام جميع الوحدات الموجودة تلقائياً مع الحفاظ على حالتها (متاحة/مشغولة) والعقود المرتبطة بها.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

@@ -5,11 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Building2, User, FileText, ArrowRight, ArrowLeft } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Plus, Building2, User, FileText, ArrowRight, ArrowLeft, CalendarIcon } from "lucide-react";
 import { UnitSelector } from "./UnitSelector";
 import { UnitsManagement } from "./UnitsManagement";
 import { useApp } from "@/contexts/AppContext";
 import { toast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface QuickEntryDialogProps {
   open: boolean;
@@ -67,6 +71,7 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
     paymentType: "later",
     numberOfPayments: "12",
     paymentDates: "",
+    paymentAmounts: "",
     checkNumbers: "",
   });
 
@@ -80,7 +85,7 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
     setShowUnitsManagement(false);
     setPropertyData({ name: "", type: "", location: "", floors: "1", totalUnits: "", availableUnits: "", status: "available", useIntelligentNumbering: false, unitsPerFloor: "", unitFormat: "101" });
     setClientData({ name: "", phone: "", email: "", idNumber: "", nationality: "", address: "", type: "tenant" });
-    setContractData({ unitNumber: "", startDate: "", endDate: "", monthlyRent: "", paymentMethod: "", paymentSchedule: "monthly", paymentType: "later", numberOfPayments: "12", paymentDates: "", checkNumbers: "" });
+    setContractData({ unitNumber: "", startDate: "", endDate: "", monthlyRent: "", paymentMethod: "", paymentSchedule: "monthly", paymentType: "later", numberOfPayments: "12", paymentDates: "", paymentAmounts: "", checkNumbers: "" });
   };
 
   const calculateTotalUnits = () => {
@@ -178,18 +183,15 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
       const dates = [];
       const current = new Date(start);
       
-      while (current <= end) {
+      const numberOfPayments = parseInt(schedule);
+      if (!numberOfPayments || numberOfPayments < 1 || numberOfPayments > 12) return [];
+      
+      const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      const daysBetweenPayments = Math.floor(totalDays / numberOfPayments);
+      
+      for (let i = 0; i < numberOfPayments; i++) {
         dates.push(current.toISOString().split('T')[0]);
-        
-        if (schedule === 'monthly') {
-          current.setMonth(current.getMonth() + 1);
-        } else if (schedule === 'quarterly') {
-          current.setMonth(current.getMonth() + 3);
-        } else if (schedule === 'semi_annual') {
-          current.setMonth(current.getMonth() + 6);
-        } else if (schedule === 'annually') {
-          current.setFullYear(current.getFullYear() + 1);
-        }
+        current.setDate(current.getDate() + daysBetweenPayments);
       }
       
       return dates;
@@ -210,6 +212,7 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
       unitNumber: contractData.unitNumber,
       numberOfPayments: paymentDates.length.toString(),
       paymentDates: paymentDates.join(', '),
+      paymentAmounts: contractData.paymentAmounts || "",
       checkNumbers: contractData.checkNumbers || "",
     };
 
@@ -234,10 +237,13 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
 
     // Create payments based on schedule
     const yearlyRent = parseFloat(contractData.monthlyRent);
-    const paymentAmount = contractData.paymentSchedule === 'monthly' ? yearlyRent / 12 :
-                        contractData.paymentSchedule === 'quarterly' ? yearlyRent / 4 :
-                        contractData.paymentSchedule === 'semi_annual' ? yearlyRent / 2 :
-                        yearlyRent;
+    const numberOfPayments = parseInt(contractData.paymentSchedule);
+    
+    // استخدام المبالغ المخصصة إذا كانت موجودة، وإلا احسبها بالتساوي
+    const paymentAmounts = contractData.paymentAmounts ? contractData.paymentAmounts.split(', ').map(a => parseFloat(a)) : [];
+    const useCustomAmounts = paymentAmounts.length === paymentDates.length && paymentAmounts.every(a => !isNaN(a));
+    
+    const defaultPaymentAmount = yearlyRent / numberOfPayments;
 
     for (let index = 0; index < paymentDates.length; index++) {
       const date = paymentDates[index];
@@ -258,10 +264,13 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
       }
       // إنشاء رقم الشيك إذا كانت طريقة الدفع شيك وتوفر أرقام الشيكات
       let checkNumber = undefined;
-      const checkNumbers = contractData.checkNumbers ? contractData.checkNumbers.split(', ') : [];
+      const checkNumbers = contractData.checkNumbers ? contractData.checkNumbers.split(',') : [];
       if (contractData.paymentMethod === 'cheque' && checkNumbers.length > 0) {
         checkNumber = checkNumbers[index];
       }
+      
+      // استخدام المبلغ المخصص أو المبلغ الافتراضي
+      const paymentAmount = useCustomAmounts ? paymentAmounts[index] : defaultPaymentAmount;
       
       await addPayment({
         contractId: contractId,
@@ -749,37 +758,79 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="startDate">تاريخ بداية العقد *</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={contractData.startDate}
-                    onChange={(e) => {
-                      const newStartDate = e.target.value;
-                      setContractData(p => {
-                        // Auto-calculate end date (one year later)
-                        const startDate = new Date(newStartDate);
-                        const endDate = new Date(startDate);
-                        endDate.setFullYear(startDate.getFullYear() + 1);
-                        endDate.setDate(endDate.getDate() - 1); // One day before to make it exactly one year
-                        
-                        return { 
-                          ...p, 
-                          startDate: newStartDate,
-                          endDate: endDate.toISOString().split('T')[0]
-                        };
-                      });
-                    }}
-                  />
+                  <Label>تاريخ بداية العقد *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-right font-normal",
+                          !contractData.startDate && "text-muted-foreground"
+                        )}
+                        dir="ltr"
+                      >
+                        <CalendarIcon className="ml-2 h-4 w-4" />
+                        {contractData.startDate ? format(new Date(contractData.startDate), "yyyy-MM-dd") : "اختر التاريخ"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={contractData.startDate ? new Date(contractData.startDate) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const newStartDate = format(date, "yyyy-MM-dd");
+                            setContractData(p => {
+                              // Auto-calculate end date (one year later)
+                              const startDate = new Date(newStartDate);
+                              const endDate = new Date(startDate);
+                              endDate.setFullYear(startDate.getFullYear() + 1);
+                              endDate.setDate(endDate.getDate() - 1);
+                              
+                              return { 
+                                ...p, 
+                                startDate: newStartDate,
+                                endDate: format(endDate, "yyyy-MM-dd")
+                              };
+                            });
+                          }
+                        }}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div>
-                  <Label htmlFor="endDate">تاريخ نهاية العقد *</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={contractData.endDate}
-                    onChange={(e) => setContractData(p => ({ ...p, endDate: e.target.value }))}
-                  />
+                  <Label>تاريخ نهاية العقد *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-right font-normal",
+                          !contractData.endDate && "text-muted-foreground"
+                        )}
+                        dir="ltr"
+                      >
+                        <CalendarIcon className="ml-2 h-4 w-4" />
+                        {contractData.endDate ? format(new Date(contractData.endDate), "yyyy-MM-dd") : "اختر التاريخ"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={contractData.endDate ? new Date(contractData.endDate) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            setContractData(p => ({ ...p, endDate: format(date, "yyyy-MM-dd") }));
+                          }
+                        }}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
@@ -797,21 +848,6 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
               </div>
 
               <div>
-                <Label htmlFor="paymentSchedule">جدولة الدفع *</Label>
-                <Select value={contractData.paymentSchedule} onValueChange={(value) => setContractData(p => ({ ...p, paymentSchedule: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر جدولة الدفع" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">شهري</SelectItem>
-                    <SelectItem value="quarterly">ربع سنوي</SelectItem>
-                    <SelectItem value="semi_annual">نصف سنوي</SelectItem>
-                    <SelectItem value="annually">سنوي</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
                 <Label htmlFor="paymentMethod">طريقة الدفع *</Label>
                 <Select value={contractData.paymentMethod} onValueChange={(value) => setContractData(p => ({ ...p, paymentMethod: value }))}>
                   <SelectTrigger>
@@ -820,8 +856,29 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
                   <SelectContent>
                     <SelectItem value="cash">نقدي</SelectItem>
                     <SelectItem value="cheque">شيك</SelectItem>
-                    <SelectItem value="bank_transfer">حوالة بنكية</SelectItem>
-                    <SelectItem value="card">بطاقة ائتمان</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="paymentSchedule">جدولة الدفع *</Label>
+                <Select value={contractData.paymentSchedule} onValueChange={(value) => setContractData(p => ({ ...p, paymentSchedule: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر جدولة الدفع" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 - دفعة</SelectItem>
+                    <SelectItem value="2">2 - دفعتين</SelectItem>
+                    <SelectItem value="3">3 - دفعات</SelectItem>
+                    <SelectItem value="4">4 - دفعات</SelectItem>
+                    <SelectItem value="5">5 - دفعات</SelectItem>
+                    <SelectItem value="6">6 - دفعات</SelectItem>
+                    <SelectItem value="7">7 - دفعات</SelectItem>
+                    <SelectItem value="8">8 - دفعات</SelectItem>
+                    <SelectItem value="9">9 - دفعات</SelectItem>
+                    <SelectItem value="10">10 - دفعات</SelectItem>
+                    <SelectItem value="11">11 - دفعة</SelectItem>
+                    <SelectItem value="12">12 - دفعة</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -839,11 +896,11 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
                 </Select>
               </div>
 
-              {/* أرقام الشيكات */}
-              {contractData.paymentMethod === 'cheque' && contractData.paymentSchedule && contractData.startDate && contractData.endDate && (
+              {/* جدول الدفعات للتعديل - لجميع طرق الدفع */}
+              {contractData.paymentSchedule && contractData.startDate && contractData.endDate && contractData.paymentMethod && (
                 <div className="space-y-4">
-                  <Label>أرقام الشيكات *</Label>
-                  <div className="space-y-3">
+                  <Label>تفاصيل الدفعات (يمكن التعديل)</Label>
+                  <div className="space-y-3 max-h-60 overflow-y-auto border rounded-md p-3">
                     {(() => {
                       // Calculate payment dates
                       const startDate = new Date(contractData.startDate);
@@ -851,77 +908,101 @@ export function QuickEntryDialog({ open, onOpenChange }: QuickEntryDialogProps) 
                       const dates = [];
                       let currentDate = new Date(startDate);
                       
-                      let numberOfPayments = 0;
-                      switch (contractData.paymentSchedule) {
-                        case 'monthly':
-                          const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + 
-                                        (endDate.getMonth() - startDate.getMonth());
-                          numberOfPayments = Math.floor(months) + 1;
-                          if (months >= 11 && months <= 12) numberOfPayments = 12;
-                          break;
-                        case 'quarterly':
-                          numberOfPayments = 4;
-                          break;
-                        case 'semi_annual':
-                          numberOfPayments = 2;
-                          break;
-                        case 'annually':
-                          numberOfPayments = 1;
-                          break;
-                      }
-
+                      const numberOfPayments = parseInt(contractData.paymentSchedule);
+                      if (!numberOfPayments || numberOfPayments < 1 || numberOfPayments > 12) return [];
+                      
+                      const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                      const daysBetweenPayments = Math.floor(totalDays / numberOfPayments);
+                      
                       for (let i = 0; i < numberOfPayments; i++) {
                         dates.push(currentDate.toISOString().split('T')[0]);
-                        
-                        switch (contractData.paymentSchedule) {
-                          case 'monthly':
-                            currentDate.setMonth(currentDate.getMonth() + 1);
-                            break;
-                          case 'quarterly':
-                            currentDate.setMonth(currentDate.getMonth() + 3);
-                            break;
-                          case 'semi_annual':
-                            currentDate.setMonth(currentDate.getMonth() + 6);
-                            break;
-                          case 'annually':
-                            currentDate.setFullYear(currentDate.getFullYear() + 1);
-                            break;
-                        }
+                        currentDate.setDate(currentDate.getDate() + daysBetweenPayments);
+                      }
+
+                      // حساب المبالغ المتساوية
+                      const yearlyRent = parseFloat(contractData.monthlyRent) || 0;
+                      const paymentAmount = (yearlyRent / numberOfPayments).toFixed(2);
+                      
+                      // تهيئة المبالغ إذا لم تكن موجودة
+                      let amounts = contractData.paymentAmounts ? contractData.paymentAmounts.split(', ') : [];
+                      if (amounts.length !== numberOfPayments) {
+                        amounts = Array(numberOfPayments).fill(paymentAmount);
                       }
 
                       const checkNumbers = contractData.checkNumbers ? contractData.checkNumbers.split(',') : [];
                       
                       return dates.map((date, index) => (
-                        <div key={index} className="grid grid-cols-2 gap-4">
+                        <div key={index} className={`grid ${contractData.paymentMethod === 'cheque' ? 'grid-cols-3' : 'grid-cols-2'} gap-3 p-3 bg-muted/50 rounded-md`}>
                           <div>
-                            <Label htmlFor={`checkDate${index}`}>التاريخ {index + 1}</Label>
-                            <Input
-                              id={`checkDate${index}`}
-                              type="date"
-                              value={date}
-                              onChange={(e) => {
-                                const newDates = [...dates];
-                                newDates[index] = e.target.value;
-                                setContractData(p => ({ ...p, paymentDates: newDates.join(', ') }));
-                              }}
-                            />
+                            <Label className="text-xs">التاريخ {index + 1}</Label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className={cn(
+                                    "w-full justify-start text-right font-normal h-9",
+                                    !date && "text-muted-foreground"
+                                  )}
+                                >
+                                  <CalendarIcon className="ml-2 h-3 w-3" />
+                                  <span className="text-xs">{date ? format(new Date(date), "dd/MM/yyyy") : "اختر"}</span>
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarComponent
+                                  mode="single"
+                                  selected={date ? new Date(date) : undefined}
+                                  onSelect={(selectedDate) => {
+                                    if (selectedDate) {
+                                      const newDates = [...dates];
+                                      newDates[index] = format(selectedDate, "yyyy-MM-dd");
+                                      setContractData(p => ({ ...p, paymentDates: newDates.join(', ') }));
+                                    }
+                                  }}
+                                  initialFocus
+                                  className="pointer-events-auto"
+                                />
+                              </PopoverContent>
+                            </Popover>
                           </div>
                           <div>
-                            <Label htmlFor={`checkNumber${index}`}>رقم الشيك {index + 1}</Label>
+                            <Label className="text-xs">المبلغ {index + 1}</Label>
                             <Input
-                              id={`checkNumber${index}`}
-                              value={checkNumbers[index] || ''}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="h-9 text-sm"
+                              placeholder="المبلغ"
+                              value={amounts[index] || ''}
                               onChange={(e) => {
-                                const newCheckNumbers = [...checkNumbers];
-                                newCheckNumbers[index] = e.target.value;
-                                while (newCheckNumbers.length < dates.length) {
-                                  newCheckNumbers.push('');
+                                const newAmounts = [...amounts];
+                                newAmounts[index] = e.target.value;
+                                while (newAmounts.length < dates.length) {
+                                  newAmounts.push(paymentAmount);
                                 }
-                                setContractData(p => ({ ...p, checkNumbers: newCheckNumbers.join(',') }));
+                                setContractData(p => ({ ...p, paymentAmounts: newAmounts.join(', ') }));
                               }}
-                              placeholder={`رقم الشيك ${index + 1}`}
                             />
                           </div>
+                          {contractData.paymentMethod === 'cheque' && (
+                            <div>
+                              <Label className="text-xs">رقم الشيك {index + 1}</Label>
+                              <Input
+                                className="h-9 text-sm"
+                                placeholder="رقم الشيك"
+                                value={checkNumbers[index] || ''}
+                                onChange={(e) => {
+                                  const newCheckNumbers = [...checkNumbers];
+                                  newCheckNumbers[index] = e.target.value;
+                                  while (newCheckNumbers.length < dates.length) {
+                                    newCheckNumbers.push('');
+                                  }
+                                  setContractData(p => ({ ...p, checkNumbers: newCheckNumbers.join(',') }));
+                                }}
+                              />
+                            </div>
+                          )}
                         </div>
                       ));
                     })()}

@@ -3,9 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { AlertTriangle, RefreshCw, CalendarIcon } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useToast } from "@/components/ui/use-toast";
+import { format } from "date-fns";
+import { cn, formatDateDDMMYYYY } from "@/lib/utils";
 
 interface ContractRenewalDialogProps {
   contract: any;
@@ -83,14 +87,36 @@ export function ContractRenewalDialog({ contract, open, onClose }: ContractRenew
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="newEndDate">تاريخ النهاية الجديد</Label>
-            <Input
-              id="newEndDate"
-              type="date"
-              value={newEndDate}
-              onChange={(e) => setNewEndDate(e.target.value)}
-              min={contract.endDate}
-            />
+            <Label>تاريخ النهاية الجديد</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-right font-normal",
+                    !newEndDate && "text-muted-foreground"
+                  )}
+                  dir="ltr"
+                >
+                  <CalendarIcon className="ml-2 h-4 w-4" />
+                  {newEndDate ? formatDateDDMMYYYY(newEndDate) : "اختر التاريخ"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={newEndDate ? new Date(newEndDate) : undefined}
+                  onSelect={(date) => {
+                    if (date) {
+                      setNewEndDate(format(date, "yyyy-MM-dd"));
+                    }
+                  }}
+                  disabled={(date) => date < new Date(contract.endDate)}
+                  initialFocus
+                  className="pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="flex gap-2">

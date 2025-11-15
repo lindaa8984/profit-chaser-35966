@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp, CreditCard, Calendar, Eye, Edit2, CheckCircle, User, Building2 } from "lucide-react";
 import { Payment } from "@/contexts/AppContext";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 interface GroupedPaymentCardProps {
   contractId: number;
@@ -34,7 +35,7 @@ export function GroupedPaymentCard({
   const getStatusBadge = (status: string) => {
     switch(status) {
       case "paid": return <Badge className="bg-success/10 text-success border-success/20">مدفوع</Badge>;
-      case "pending": return <Badge className="bg-warning/10 text-warning border-warning/20">معلق</Badge>;
+      case "pending": return <Badge className="bg-warning/10 text-warning border-warning/20">مجدول</Badge>;
       case "scheduled": return <Badge className="bg-muted text-muted-foreground border-muted">مجدول</Badge>;
       case "overdue": return <Badge className="bg-destructive/10 text-destructive border-destructive/20">متأخر</Badge>;
       default: return <Badge>{status}</Badge>;
@@ -63,7 +64,7 @@ export function GroupedPaymentCard({
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
 
   return (
-    <Card className="shadow-soft hover:shadow-elegant transition-shadow duration-300 group">
+    <Card className="shadow-soft hover:shadow-elegant transition-shadow duration-300 group h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -83,7 +84,7 @@ export function GroupedPaymentCard({
               )}
               {pendingCount > 0 && (
                 <Badge className="bg-warning/10 text-warning border-warning/20">
-                  {pendingCount} معلق
+                  {pendingCount} مجدول
                 </Badge>
               )}
               {overdueCount > 0 && (
@@ -101,50 +102,51 @@ export function GroupedPaymentCard({
           <CreditCard className="h-6 w-6 text-muted-foreground" />
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex-1 flex flex-col gap-3">
         <div className="flex items-center gap-2 text-sm">
           <span className="font-medium text-lg text-primary">
             إجمالي: {totalAmount.toLocaleString()} {currencySymbols[currency]}
           </span>
         </div>
         
-        {nextDuePayment && (
-          <div className="p-3 bg-muted/50 rounded-md">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">الدفعة التالية:</p>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
-                  {nextDuePayment.dueDate}
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium text-primary">
-                    {nextDuePayment.amount.toLocaleString()} {currencySymbols[currency]}
-                  </span>
-                </div>
-                {nextDuePayment.paymentMethod === 'cheque' && nextDuePayment.checkNumber && (
-                  <div className="text-xs bg-primary/10 text-primary px-2 py-1 rounded mt-1 inline-block">
-                    رقم الشيك: {nextDuePayment.checkNumber}
+        <div className="mt-auto space-y-3">
+          {nextDuePayment && (
+            <div className="p-3 bg-muted/50 rounded-md">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">الدفعة التالية:</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    <span dir="ltr">{formatDateDDMMYYYY(nextDuePayment.dueDate)}</span>
                   </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-1">
-                {getStatusBadge(nextDuePayment.status)}
-                {(nextDuePayment.status === 'pending' || nextDuePayment.status === 'scheduled' || nextDuePayment.status === 'overdue') && 
-                 (nextDuePayment.paymentMethod === 'cheque' || nextDuePayment.paymentMethod === 'cash') && (
-                  <Button 
-                    size="sm" 
-                    className="bg-gradient-success text-xs"
-                    onClick={() => onConfirmPayment(nextDuePayment)}
-                  >
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    تأكيد
-                  </Button>
-                )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium text-primary">
+                      {nextDuePayment.amount.toLocaleString()} {currencySymbols[currency]}
+                    </span>
+                  </div>
+                  {nextDuePayment.paymentMethod === 'cheque' && nextDuePayment.checkNumber && (
+                    <div className="text-xs bg-primary/10 text-primary px-2 py-1 rounded mt-1 inline-block">
+                      رقم الشيك: {nextDuePayment.checkNumber}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {getStatusBadge(nextDuePayment.status)}
+                  {(nextDuePayment.status === 'pending' || nextDuePayment.status === 'scheduled' || nextDuePayment.status === 'overdue') && 
+                   (nextDuePayment.paymentMethod === 'cheque' || nextDuePayment.paymentMethod === 'cash') && (
+                    <Button 
+                      size="sm" 
+                      className="bg-gradient-success text-xs"
+                      onClick={() => onConfirmPayment(nextDuePayment)}
+                    >
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      تأكيد
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
         <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
           <div className="flex gap-2">
@@ -181,14 +183,20 @@ export function GroupedPaymentCard({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="h-3 w-3" />
-                      استحقاق: {payment.dueDate}
+                    <div className="text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-3 w-3" />
+                        <span>استحقاق:</span>
+                      </div>
+                      <div className="mr-5" dir="ltr">{formatDateDDMMYYYY(payment.dueDate)}</div>
                     </div>
                     {payment.paidDate && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        دُفع: {payment.paidDate}
+                      <div className="text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-3 w-3" />
+                          <span>دُفع:</span>
+                        </div>
+                        <div className="mr-5" dir="ltr">{formatDateDDMMYYYY(payment.paidDate)}</div>
                       </div>
                     )}
                     <div className="flex items-center gap-2 text-sm">
@@ -231,6 +239,7 @@ export function GroupedPaymentCard({
             ))}
           </CollapsibleContent>
         </Collapsible>
+        </div>
       </CardContent>
     </Card>
   );

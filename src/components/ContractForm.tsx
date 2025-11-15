@@ -4,10 +4,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Calendar } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { Plus, Calendar, CalendarIcon, Upload, X, ChevronsUpDown, Check } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { UnitSelector } from "./UnitSelector";
+import { format } from "date-fns";
+import { ar } from "date-fns/locale";
+import { cn, formatDateDDMMYYYY, parseDateDDMMYYYY } from "@/lib/utils";
+import { supabase as supabaseClient } from "@/integrations/supabase/client";
+const supabase = supabaseClient as any;
 
 interface ContractFormProps {
     contract?: any;
@@ -22,9 +31,17 @@ interface ContractFormProps {
 
 export function ContractForm({ contract = null, isEdit = false, onClose, prefilledData = null }: ContractFormProps) {
     const { properties, clients, addContract, updateContract, currency, updateProperty, addPayment, reserveUnit, releaseUnit } = useApp();
+    const { user } = useAuth();
     const [open, setOpen] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [contractFile, setContractFile] = useState<File | null>(null);
+    const [shops, setShops] = useState<any[]>([]);
+    const [groundHouses, setGroundHouses] = useState<any[]>([]);
     const [formData, setFormData] = useState({
+        propertyType: "unit", // unit, shop, ground_house
         propertyId: "",
+        shopId: "",
+        groundHouseId: "",
         clientId: "",
         unitNumber: "",
         startDate: "",
@@ -35,15 +52,58 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
         numberOfPayments: "",
         checkDates: "",
         paymentDates: "",
+        paymentAmounts: "", // مبالغ الدفعات
         checkNumbers: "", // أرقام الشيكات
         bankName: "", // اسم البنك للشيكات
         paymentType: "" // "now" or "later"
     });
 
+    // جلب المحلات والبيوت الأرضية
+    useEffect(() => {
+        const fetchData = async () => {
+            if (!user) return;
+
+            try {
+                // جلب المحلات التجارية من جدول units مع معلومات العقار
+                const { data: shopsData } = await supabase
+                    .from('units')
+                    .select(`
+                        *,
+                        properties (
+                            id,
+                            name
+                        )
+                    `)
+                    .eq('user_id', user.id)
+                    .eq('unit_type', 'commercial')
+                    .eq('is_available', true);
+                
+                setShops(shopsData || []);
+
+                // جلب البيوت الأرضية من جدول units (جميع البيوت)
+                const { data: housesData } = await supabase
+                    .from('units')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .eq('unit_type', 'ground_house')
+                    .order('unit_number', { ascending: true });
+                
+                setGroundHouses(housesData || []);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        };
+
+        fetchData();
+    }, [user]);
+
     useEffect(() => {
         if (contract && isEdit) {
             setFormData({
-                propertyId: contract.propertyId.toString(),
+                propertyType: contract.propertyType || "unit",
+                propertyId: contract.propertyId?.toString() || "",
+                shopId: contract.shopId || "",
+                groundHouseId: contract.groundHouseId || "",
                 clientId: contract.clientId.toString(),
                 unitNumber: contract.unitNumber || "",
                 startDate: contract.startDate,
@@ -54,6 +114,7 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                 numberOfPayments: contract.numberOfPayments || "",
                 checkDates: contract.checkDates || "",
                 paymentDates: contract.paymentDates || "",
+                paymentAmounts: contract.paymentAmounts || "",
                 checkNumbers: contract.checkNumbers || "",
                 bankName: contract.bankName || "",
                 paymentType: "later" // Default for editing
@@ -67,6 +128,7 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
         if (prefilledData) {
             setFormData(prev => ({
                 ...prev,
+                propertyType: "unit",
                 propertyId: prefilledData.propertyId.toString(),
                 unitNumber: prefilledData.unitNumber
             }));
@@ -77,10 +139,65 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
     const availableProperties = properties.filter(property => property.availableUnits > 0);
     const selectedProperty = properties.find(p => p.id === parseInt(formData.propertyId));
 
+    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // التحقق من نوع الملف
+        if (file.type !== 'application/pdf') {
+            toast({ title: "خطأ", description: "يرجى رفع ملف PDF فقط", variant: "destructive" });
+            return;
+        }
+
+        // التحقق من حجم الملف (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            toast({ title: "خطأ", description: "حجم الملف يجب أن يكون أقل من 10MB", variant: "destructive" });
+            return;
+        }
+
+        setContractFile(file);
+    };
+
+    const uploadContractFile = async (contractId: string): Promise<string | null> => {
+        if (!contractFile || !user) return null;
+
+        try {
+            setUploading(true);
+            
+            // إنشاء اسم فريد للملف
+            const fileExt = contractFile.name.split('.').pop();
+            const fileName = `${user.id}/${contractId}_${Date.now()}.${fileExt}`;
+
+            // رفع الملف
+            const { error: uploadError, data } = await supabase.storage
+                .from('contracts')
+                .upload(fileName, contractFile, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (uploadError) throw uploadError;
+
+            return data.path;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            toast({ title: "خطأ", description: "فشل رفع ملف العقد", variant: "destructive" });
+            return null;
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.propertyId || !formData.clientId || !formData.startDate || !formData.endDate || !formData.monthlyRent || !formData.paymentMethod || !formData.paymentSchedule) {
+        // التحقق من الحقول المطلوبة بناءً على نوع العقار
+        const hasRequiredPropertyFields = 
+            (formData.propertyType === 'unit' && formData.propertyId && formData.unitNumber) ||
+            (formData.propertyType === 'shop' && formData.shopId) ||
+            (formData.propertyType === 'ground_house' && formData.groundHouseId);
+
+        if (!hasRequiredPropertyFields || !formData.clientId || !formData.startDate || !formData.endDate || !formData.monthlyRent || !formData.paymentMethod || !formData.paymentSchedule) {
             toast({
                 title: "خطأ",
                 description: "يرجى ملء جميع الحقول المطلوبة",
@@ -120,8 +237,24 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
             return;
         }
 
-        const contractData = {
-            propertyId: parseInt(formData.propertyId),
+        // التحقق من مجموع الدفعات - يجب أن يساوي قيمة العقد في جميع الحالات
+        if (formData.paymentAmounts) {
+            const amounts = formData.paymentAmounts.split(', ').map(a => parseFloat(a));
+            const totalPayments = amounts.reduce((sum, amount) => sum + amount, 0);
+            const yearlyRent = parseFloat(formData.monthlyRent);
+            
+            if (Math.abs(totalPayments - yearlyRent) > 0.01) {
+                toast({
+                    title: "خطأ في التقسيم",
+                    description: `مجموع الدفعات (${totalPayments.toLocaleString()}) لا يتطابق مع مبلغ الإيجار الكلي (${yearlyRent.toLocaleString()}). يجب أن يكون المجموع مساوياً تماماً لقيمة العقد.`,
+                    variant: "destructive"
+                });
+                return;
+            }
+        }
+
+        const contractData: any = {
+            propertyType: formData.propertyType,
             clientId: parseInt(formData.clientId),
             startDate: formData.startDate,
             endDate: formData.endDate,
@@ -129,61 +262,104 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
             currency: currency,
             paymentSchedule: formData.paymentSchedule,
             paymentMethod: formData.paymentMethod,
-            unitNumber: formData.unitNumber,
             numberOfPayments: formData.numberOfPayments,
             checkDates: formData.checkDates,
             paymentDates: formData.paymentDates,
+            paymentAmounts: formData.paymentAmounts, // ✅ إضافة المبالغ المخصصة
             checkNumbers: formData.checkNumbers,
             bankName: formData.bankName
         };
 
+        // إضافة البيانات حسب نوع العقار
+        if (formData.propertyType === 'unit') {
+            contractData.propertyId = parseInt(formData.propertyId);
+            contractData.unitNumber = formData.unitNumber;
+        } else if (formData.propertyType === 'shop') {
+            contractData.shopId = formData.shopId;
+        } else if (formData.propertyType === 'ground_house') {
+            contractData.groundHouseId = formData.groundHouseId;
+        }
+
         if (isEdit && contract) {
-            updateContract(contract.id, contractData);
+            await updateContract(contract.id, contractData);
+            await new Promise(resolve => setTimeout(resolve, 500)); // انتظار لتحديث البيانات
             toast({
                 title: "تم بنجاح",
                 description: "تم تحديث العقد بنجاح"
             });
         } else {
-            // التحقق من صحة البيانات قبل المتابعة
-            if (!formData.unitNumber) {
-                toast({
-                    title: "خطأ",
-                    description: "يرجى اختيار رقم الوحدة",
-                    variant: "destructive"
-                });
+            // التحقق من صحة البيانات بناءً على نوع العقار قبل المتابعة
+            if (formData.propertyType === 'unit') {
+                if (!formData.unitNumber) {
+                    toast({
+                        title: "خطأ",
+                        description: "يرجى اختيار رقم الوحدة",
+                        variant: "destructive"
+                    });
+                    return;
+                }
+
+                // Reserve the unit first - التحقق من نجاح الحجز قبل المتابعة
+                const reservationSuccess = await reserveUnit(parseInt(formData.propertyId), formData.unitNumber, parseInt(formData.clientId));
+                if (!reservationSuccess) {
+                    toast({
+                        title: "خطأ",
+                        description: "هذه الوحدة مشغولة بالفعل. يرجى اختيار وحدة أخرى.",
+                        variant: "destructive"
+                    });
+                    return;
+                }
+            }
+            
+            // تأخير قصير لمنع الضغط المزدوج السريع
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // دع addContract يولد الID وأرجعه - فقط بعد نجاح الحجز
+            const contractUuid = await addContract(contractData);
+            
+            if (!contractUuid) {
+                // Rollback unit reservation if contract creation failed (فقط للوحدات)
+                if (formData.propertyType === 'unit') {
+                    releaseUnit(parseInt(formData.propertyId), formData.unitNumber);
+                }
                 return;
             }
 
-            // Reserve the unit first - التحقق من نجاح الحجز قبل المتابعة
-            const reservationSuccess = await reserveUnit(parseInt(formData.propertyId), formData.unitNumber, parseInt(formData.clientId));
-            if (!reservationSuccess) {
-                toast({
-                    title: "خطأ",
-                    description: "هذه الوحدة مشغولة بالفعل. يرجى اختيار وحدة أخرى.",
-                    variant: "destructive"
-                });
-                return;
-            }
-            
-            // دع addContract يولد الID وأرجعه - فقط بعد نجاح الحجز
-            const contractId = await addContract(contractData);
-            
-            if (!contractId) {
-                // Rollback unit reservation if contract creation failed
-                releaseUnit(parseInt(formData.propertyId), formData.unitNumber);
-                return;
+            // رفع ملف العقد إذا وُجد
+            let uploadedFilePath: string | null = null;
+            if (contractFile) {
+                uploadedFilePath = await uploadContractFile(contractUuid);
+                if (uploadedFilePath) {
+                    // Wait a moment for the contract to be fully created, then update with file path
+                    setTimeout(async () => {
+                        // Find the integer ID for the newly created contract
+                        const { data: contractsData } = await supabase
+                            .from('contracts')
+                            .select('id')
+                            .eq('id', contractUuid)
+                            .single();
+                        
+                        if (contractsData) {
+                            const contractIntId = parseInt(contractsData.id.slice(0, 8), 16);
+                            await updateContract(contractIntId, { contractFileUrl: uploadedFilePath });
+                        }
+                    }, 1000);
+                }
             }
 
             // إنشاء الدفعات بناءً على الجدولة
             const paymentDates = formData.paymentDates.split(', ');
             const checkNumbers = formData.checkNumbers ? formData.checkNumbers.split(', ') : [];
             
-            // حساب قيمة الدفعة بناءً على الإيجار السنوي وجدولة الدفع
+            // حساب قيمة الدفعة بناءً على الإيجار السنوي وعدد الدفعات
             const yearlyRent = contractData.monthlyRent; // الآن هذا الإيجار السنوي
-            const paymentAmount = formData.paymentSchedule === 'monthly' ? yearlyRent / 12 :
-                                formData.paymentSchedule === 'quarterly' ? yearlyRent / 4 :
-                                formData.paymentSchedule === 'semi_annual' ? yearlyRent / 2 :
-                                yearlyRent;
+            const numberOfPayments = parseInt(formData.paymentSchedule);
+            
+            // استخدام المبالغ المخصصة إذا كانت موجودة، وإلا احسبها بالتساوي
+            const paymentAmounts = formData.paymentAmounts ? formData.paymentAmounts.split(', ').map(a => parseFloat(a)) : [];
+            const useCustomAmounts = paymentAmounts.length === paymentDates.length && paymentAmounts.every(a => !isNaN(a));
+            
+            const defaultPaymentAmount = yearlyRent / numberOfPayments;
 
             for (let index = 0; index < paymentDates.length; index++) {
                 const date = paymentDates[index];
@@ -193,7 +369,7 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                 const today = new Date();
                 const daysDifference = Math.floor((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                 
-                // تحديد حالة الدفعة - جميع الدفعات غير المدفوعة تكون متاحة للتأكيد
+                // تحديد حالة الدفعة - جميع الدفعات غير المدفوعة تكون متاحة للتأكيم
                 let status: 'paid' | 'pending' | 'scheduled' | 'overdue' = 'pending';
                 
                 if (shouldPayNow) {
@@ -206,8 +382,11 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                     checkNumber = checkNumbers[index];
                 }
                 
+                // استخدام المبلغ المخصص أو المبلغ الافتراضي
+                const paymentAmount = useCustomAmounts ? paymentAmounts[index] : defaultPaymentAmount;
+                
                 await addPayment({
-                    contractId: contractId,
+                    contractId: contractUuid,
                     amount: paymentAmount,
                     currency: contractData.currency,
                     dueDate: date,
@@ -238,7 +417,10 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
         }
 
         setFormData({
+            propertyType: "unit",
             propertyId: "",
+            shopId: "",
+            groundHouseId: "",
             clientId: "",
             unitNumber: "",
             startDate: "",
@@ -249,10 +431,12 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
             numberOfPayments: "",
             checkDates: "",
             paymentDates: "",
+            paymentAmounts: "",
             checkNumbers: "",
             bankName: "",
             paymentType: ""
         });
+        setContractFile(null);
         
         setOpen(false);
         if (onClose) onClose();
@@ -261,66 +445,62 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
     const calculatePaymentDates = () => {
         if (!formData.startDate || !formData.paymentSchedule || !formData.endDate) return;
 
-        const startDate = new Date(formData.startDate);
-        const endDate = new Date(formData.endDate);
-        const dates = [];
-        let currentDate = new Date(startDate);
+        // ✅ التحقق من صحة التواريخ لتجنب التجميد عند الكتابة اليدوية
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(formData.startDate) || !dateRegex.test(formData.endDate)) return;
 
-        // Calculate number of payments based on schedule and contract duration
-        let numberOfPayments = 0;
-        
-        switch (formData.paymentSchedule) {
-            case 'monthly':
-                const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + 
-                              (endDate.getMonth() - startDate.getMonth());
-                numberOfPayments = Math.floor(months) + 1; // +1 for the start month
-                // But ensure it's exactly 12 for a full year
-                if (months >= 11 && months <= 12) numberOfPayments = 12;
-                break;
-            case 'quarterly':
-                numberOfPayments = 4;
-                break;
-            case 'semi_annual':
-                numberOfPayments = 2;
-                break;
-            case 'annually':
-                numberOfPayments = 1;
-                break;
-            default:
+        // لا تُعيد التوليد في وضع التعديل إذا كان لدى العقد تواريخ دفعات محفوظة بعدد يطابق الاختيار الحالي
+        const desiredCount = parseInt(formData.paymentSchedule);
+        if (isEdit && formData.paymentDates?.trim()) {
+            const existingDates = formData.paymentDates.split(',').map(d => d.trim()).filter(Boolean);
+            if (existingDates.length === desiredCount) {
+                // احترام التوزيعات اليدوية المحفوظة وعدم استبدالها تلقائياً
                 return;
-        }
-
-        // Generate payment dates
-        for (let i = 0; i < numberOfPayments; i++) {
-            dates.push(currentDate.toISOString().split('T')[0]);
-            
-            switch (formData.paymentSchedule) {
-                case 'monthly':
-                    currentDate.setMonth(currentDate.getMonth() + 1);
-                    break;
-                case 'quarterly':
-                    currentDate.setMonth(currentDate.getMonth() + 3);
-                    break;
-                case 'semi_annual':
-                    currentDate.setMonth(currentDate.getMonth() + 6);
-                    break;
-                case 'annually':
-                    currentDate.setFullYear(currentDate.getFullYear() + 1);
-                    break;
             }
         }
 
+        const startDate = new Date(formData.startDate);
+        const endDate = new Date(formData.endDate);
+
+        // ✅ التحقق من أن القيم ليست NaN قبل الحساب
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return;
+
+        const dates: string[] = [];
+        let currentDate = new Date(startDate);
+
+        // عدد الدفعات من الاختيار مباشرة
+        const numberOfPayments = desiredCount;
+        if (!numberOfPayments || numberOfPayments < 1 || numberOfPayments > 12) return;
+
+        // حساب الفترة بين كل دفعة بالأيام
+        const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysBetweenPayments = Math.floor(totalDays / numberOfPayments);
+
+        // توليد تواريخ الدفعات
+        for (let i = 0; i < numberOfPayments; i++) {
+            dates.push(currentDate.toISOString().split('T')[0]);
+            currentDate.setDate(currentDate.getDate() + daysBetweenPayments);
+        }
+
+        // حساب المبالغ المتساوية (يُستخدم كبداية فقط عند تغيير العدد)
+        const yearlyRent = parseFloat(formData.monthlyRent) || 0;
+        const paymentAmount = (yearlyRent / numberOfPayments).toFixed(2);
+        const amounts = Array(numberOfPayments).fill(paymentAmount);
+
         setFormData(prev => ({
             ...prev,
-            numberOfPayments: dates.length.toString(),
-            paymentDates: dates.join(', ')
+            numberOfPayments: numberOfPayments.toString(),
+            paymentDates: dates.join(', '),
+            // في وضع التعديل: لا نُجبر المبالغ إذا كان للمستخدم مبالغ محفوظة بنفس الطول
+            paymentAmounts: (isEdit && prev.paymentAmounts?.split(',').filter(Boolean).length === numberOfPayments)
+                ? prev.paymentAmounts
+                : amounts.join(', ')
         }));
     };
 
     useEffect(() => {
         calculatePaymentDates();
-    }, [formData.startDate, formData.endDate, formData.paymentSchedule]);
-
+    }, [formData.startDate, formData.endDate, formData.paymentSchedule, formData.monthlyRent]);
     const currencySymbols = {
         SAR: "ر.س",
         USD: "USD",
@@ -334,28 +514,32 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                 setOpen(openState);
                 if (!openState && onClose) onClose();
             }}>
-                <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+                <DialogContent className="sm:max-w-[600px] max-h-[84vh] overflow-y-auto top-[8vh] translate-y-0">
                     <DialogHeader>
                         <DialogTitle>تعديل العقد</DialogTitle>
                         <DialogDescription>
                             قم بتعديل تفاصيل العقد والحفظ عند الانتهاء
                         </DialogDescription>
                     </DialogHeader>
-                    <FormContent 
-                        formData={formData}
-                        setFormData={setFormData}
-                        handleSubmit={handleSubmit}
-                        availableProperties={properties}
-                        properties={properties}
-                        clients={clients}
-                        currencySymbols={currencySymbols}
-                        currency={currency}
-                        isEdit={isEdit}
-                        onCancel={() => {
-                            setOpen(false);
-                            if (onClose) onClose();
-                        }}
-                    />
+                <FormContent 
+                    formData={formData}
+                    setFormData={setFormData}
+                    handleSubmit={handleSubmit}
+                    availableProperties={properties}
+                    properties={properties}
+                    shops={shops}
+                    groundHouses={groundHouses}
+                    clients={clients}
+                    currencySymbols={currencySymbols}
+                    currency={currency}
+                    isEdit={isEdit}
+                    contractFile={contractFile}
+                    onFileSelect={handleFileSelect}
+                    onCancel={() => {
+                        setOpen(false);
+                        if (onClose) onClose();
+                    }}
+                />
                 </DialogContent>
             </Dialog>
         );
@@ -369,7 +553,7 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                     إنشاء عقد جديد
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[600px] max-h-[84vh] overflow-y-auto top-[8vh] translate-y-0">
                 <DialogHeader>
                     <DialogTitle>إنشاء عقد جديد</DialogTitle>
                     <DialogDescription>
@@ -382,15 +566,22 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                     handleSubmit={handleSubmit}
                     availableProperties={availableProperties}
                     properties={properties}
+                    shops={shops}
+                    groundHouses={groundHouses}
                     clients={clients}
                     currencySymbols={currencySymbols}
                     currency={currency}
                     isEdit={false}
+                    contractFile={contractFile}
+                    onFileSelect={handleFileSelect}
                     onCancel={() => {
                         setOpen(false);
                         // تنظيف البيانات عند الإلغاء
                         setFormData({
+                            propertyType: "unit",
                             propertyId: "",
+                            shopId: "",
+                            groundHouseId: "",
                             clientId: "",
                             unitNumber: "",
                             startDate: "",
@@ -401,10 +592,12 @@ export function ContractForm({ contract = null, isEdit = false, onClose, prefill
                             numberOfPayments: "",
                             checkDates: "",
                             paymentDates: "",
+                            paymentAmounts: "",
                             checkNumbers: "",
                             bankName: "",
                             paymentType: ""
                         });
+                        setContractFile(null);
                         if (onClose) onClose();
                     }}
                 />
@@ -419,46 +612,94 @@ function FormContent({
     handleSubmit, 
     availableProperties, 
     properties,
+    shops,
+    groundHouses,
     clients, 
     currencySymbols, 
     currency, 
     isEdit,
-    onCancel 
+    onCancel,
+    contractFile,
+    onFileSelect
 }: any) {
+    const [openProperty, setOpenProperty] = useState(false);
+    const [openShop, setOpenShop] = useState(false);
+    const [openGroundHouse, setOpenGroundHouse] = useState(false);
+    const [openClient, setOpenClient] = useState(false);
+    
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            {/* العقار */}
+            {/* نوع العقار */}
             <div>
-                <Label htmlFor="propertyId">العقار *</Label>
-                <Select value={formData.propertyId} onValueChange={(value) => setFormData((prev: any) => ({ ...prev, propertyId: value }))}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="اختر العقار" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {availableProperties.map((property: any) => (
-                            <SelectItem key={property.id} value={property.id.toString()}>
-                                {property.name} - وحدات متاحة: {property.availableUnits}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                <Label htmlFor="propertyType">نوع العقار *</Label>
+                <select
+                    id="propertyType"
+                    value={formData.propertyType}
+                    onChange={(e) => {
+                        setFormData((prev: any) => ({
+                            ...prev,
+                            propertyType: e.target.value,
+                            propertyId: "",
+                            shopId: "",
+                            groundHouseId: "",
+                            unitNumber: ""
+                        }));
+                    }}
+                    className="w-full px-3 py-2 border border-border rounded-md bg-background"
+                    required
+                >
+                    <option value="unit">وحدة سكنية</option>
+                    <option value="shop">محل تجاري</option>
+                    <option value="ground_house">بيت أو فلا</option>
+                </select>
             </div>
 
-            {/* العميل */}
-            <div>
-                <Label htmlFor="clientId">العميل *</Label>
-                <Select value={formData.clientId} onValueChange={(value) => setFormData((prev: any) => ({ ...prev, clientId: value }))}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="اختر العميل" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {clients.map((client: any) => (
-                            <SelectItem key={client.id} value={client.id.toString()}>
-                                {client.name} - {client.phone}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            {/* اختيار العقار حسب النوع */}
+            {formData.propertyType === 'unit' && (
+                <>
+                    <div>
+                        <Label htmlFor="propertyId">العقار *</Label>
+                <Popover open={openProperty} onOpenChange={setOpenProperty}>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openProperty}
+                            className="w-full justify-between"
+                        >
+                            {formData.propertyId
+                                ? properties.find((property: any) => property.id.toString() === formData.propertyId)?.name
+                                : "اختر العقار"}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                            <CommandInput placeholder="ابحث عن العقار..." />
+                            <CommandEmpty>لا توجد نتائج</CommandEmpty>
+                            <CommandGroup className="max-h-64 overflow-auto">
+                                {properties.map((property: any) => (
+                                    <CommandItem
+                                        key={property.id}
+                                        value={property.name}
+                                        onSelect={() => {
+                                            setFormData((prev: any) => ({ ...prev, propertyId: property.id.toString() }));
+                                            setOpenProperty(false);
+                                        }}
+                                    >
+                                        <Check
+                                            className={cn(
+                                                "mr-2 h-4 w-4",
+                                                formData.propertyId === property.id.toString() ? "opacity-100" : "opacity-0"
+                                            )}
+                                        />
+                                        {property.name} {property.availableUnits > 0 ? `- وحدات متاحة: ${property.availableUnits}` : ''}
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </Command>
+                    </PopoverContent>
+                </Popover>
             </div>
 
             {/* رقم الوحدة */}
@@ -467,37 +708,350 @@ function FormContent({
                 selectedUnit={formData.unitNumber}
                 onUnitSelect={(unitNumber) => setFormData((prev: any) => ({ ...prev, unitNumber }))}
             />
+                </>
+            )}
+
+            {/* اختيار المحل التجاري */}
+            {formData.propertyType === 'shop' && (
+                <div>
+                    <Label htmlFor="shopId">المحل التجاري *</Label>
+                    <Popover open={openShop} onOpenChange={setOpenShop}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={openShop}
+                                className="w-full justify-between h-auto min-h-[40px]"
+                            >
+                                {formData.shopId ? (
+                                    <div className="flex flex-col items-start text-right w-full">
+                                        <span>محل رقم {shops.find((shop: any) => shop.id === formData.shopId)?.unit_number}</span>
+                                        {shops.find((shop: any) => shop.id === formData.shopId)?.property_id && (
+                                            <span className="text-xs text-muted-foreground">
+                                                العقار: {shops.find((shop: any) => shop.id === formData.shopId)?.properties?.name}
+                                            </span>
+                                        )}
+                                        {!shops.find((shop: any) => shop.id === formData.shopId)?.property_id && shops.find((shop: any) => shop.id === formData.shopId)?.location && (
+                                            <span className="text-xs text-muted-foreground">
+                                                الموقع: {shops.find((shop: any) => shop.id === formData.shopId)?.location}
+                                            </span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    "اختر المحل"
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                                <CommandInput placeholder="ابحث عن المحل..." />
+                                <CommandEmpty>لا توجد نتائج</CommandEmpty>
+                                <CommandGroup className="max-h-64 overflow-auto">
+                                    {shops.map((shop: any) => {
+                                        const searchValue = shop.property_id && shop.properties 
+                                            ? `${shop.unit_number} ${shop.properties.name} ${shop.properties.location || ''}`
+                                            : `${shop.unit_number} ${shop.location || 'محل منفرد'}`;
+                                        
+                                        return (
+                                            <CommandItem
+                                                key={shop.id}
+                                                value={searchValue}
+                                                onSelect={() => {
+                                                    setFormData((prev: any) => ({ ...prev, shopId: shop.id }));
+                                                    setOpenShop(false);
+                                                }}
+                                            >
+                                                <Check
+                                                    className={cn(
+                                                        "mr-2 h-4 w-4",
+                                                        formData.shopId === shop.id ? "opacity-100" : "opacity-0"
+                                                    )}
+                                                />
+                                                <div className="flex flex-col">
+                                                    <span>محل رقم {shop.unit_number}</span>
+                                                    {shop.property_id && shop.properties && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            العقار: {shop.properties.name}
+                                                            {shop.properties.location && ` - ${shop.properties.location}`}
+                                                        </span>
+                                                    )}
+                                                    {!shop.property_id && shop.location && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            الموقع: {shop.location}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </CommandItem>
+                                        );
+                                    })}
+                                </CommandGroup>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            )}
+
+            {/* اختيار البيت أو الفلا */}
+            {formData.propertyType === 'ground_house' && (
+                <div>
+                    <Label htmlFor="groundHouseId">بيت أو فلا *</Label>
+                    <Popover open={openGroundHouse} onOpenChange={setOpenGroundHouse}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={openGroundHouse}
+                                className="w-full justify-between h-auto min-h-[40px]"
+                            >
+                                {formData.groundHouseId ? (
+                                    <div className="flex flex-col items-start text-right w-full">
+                                        <span>{groundHouses.find((house: any) => house.id === formData.groundHouseId)?.house_type || 'بيت'} رقم {groundHouses.find((house: any) => house.id === formData.groundHouseId)?.unit_number}</span>
+                                        {groundHouses.find((house: any) => house.id === formData.groundHouseId)?.location && (
+                                            <span className="text-xs text-muted-foreground">
+                                                {groundHouses.find((house: any) => house.id === formData.groundHouseId)?.location}
+                                            </span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    "اختر البيت أو الفلا"
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                                <CommandInput placeholder="ابحث عن البيت..." />
+                                <CommandEmpty>لا توجد بيوت مضافة</CommandEmpty>
+                                <CommandGroup className="max-h-64 overflow-auto">
+                                    {groundHouses.map((house: any) => {
+                                        const isAvailable = house.is_available;
+                                        return (
+                                            <CommandItem
+                                                key={house.id}
+                                                value={`${house.house_type || 'بيت'} ${house.unit_number} ${house.location || ''}`}
+                                                disabled={!isAvailable}
+                                                onSelect={() => {
+                                                    if (isAvailable) {
+                                                        setFormData((prev: any) => ({ ...prev, groundHouseId: house.id }));
+                                                        setOpenGroundHouse(false);
+                                                    }
+                                                }}
+                                                className={!isAvailable ? "opacity-50 cursor-not-allowed" : ""}
+                                            >
+                                                <Check
+                                                    className={cn(
+                                                        "mr-2 h-4 w-4",
+                                                        formData.groundHouseId === house.id ? "opacity-100" : "opacity-0"
+                                                    )}
+                                                />
+                                                <div className="flex flex-col flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{house.house_type || 'بيت'} رقم {house.unit_number}</span>
+                                                        <span className={cn(
+                                                            "text-xs px-2 py-0.5 rounded-full",
+                                                            isAvailable 
+                                                                ? "bg-success/10 text-success" 
+                                                                : "bg-destructive/10 text-destructive"
+                                                        )}>
+                                                            {isAvailable ? 'متاح' : 'مشغول'}
+                                                        </span>
+                                                    </div>
+                                                    {house.location && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {house.location}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </CommandItem>
+                                        );
+                                    })}
+                                </CommandGroup>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            )}
+
+            {/* العميل */}
+            <div>
+                <Label htmlFor="clientId">العميل *</Label>
+                <Popover open={openClient} onOpenChange={setOpenClient}>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openClient}
+                            className="w-full justify-between"
+                        >
+                            {formData.clientId
+                                ? clients.find((client: any) => client.id.toString() === formData.clientId)?.name
+                                : "اختر العميل"}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                            <CommandInput placeholder="ابحث عن العميل..." />
+                            <CommandEmpty>لا توجد نتائج</CommandEmpty>
+                            <CommandGroup className="max-h-64 overflow-auto">
+                                {clients.map((client: any) => (
+                                    <CommandItem
+                                        key={client.id}
+                                        value={`${client.name} ${client.phone}`}
+                                        onSelect={() => {
+                                            setFormData((prev: any) => ({ ...prev, clientId: client.id.toString() }));
+                                            setOpenClient(false);
+                                        }}
+                                    >
+                                        <Check
+                                            className={cn(
+                                                "mr-2 h-4 w-4",
+                                                formData.clientId === client.id.toString() ? "opacity-100" : "opacity-0"
+                                            )}
+                                        />
+                                        {client.name} - {client.phone}
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </Command>
+                    </PopoverContent>
+                </Popover>
+            </div>
 
             {/* تواريخ العقد */}
             <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <Label htmlFor="startDate">تاريخ بداية العقد *</Label>
-                    <Input
-                        id="startDate"
-                        type="date"
-                        value={formData.startDate}
-                        onChange={(e) => {
-                            const startDate = e.target.value;
-                            const newEndDate = new Date(startDate);
-                            newEndDate.setFullYear(newEndDate.getFullYear() + 1);
-                            const endDateString = newEndDate.toISOString().split('T')[0];
-                            
-                            setFormData((prev: any) => ({ 
-                                ...prev, 
-                                startDate,
-                                endDate: endDateString
-                            }));
-                        }}
-                    />
+                    <Label>تاريخ بداية العقد *</Label>
+                    <div className="flex gap-2">
+                        <Input
+                            type="text"
+                            placeholder="DD-MM-YYYY أو DD/MM/YYYY"
+                            value={formData.startDate ? (formData.startDate.match(/^\d{4}-\d{2}-\d{2}$/) ? formatDateDDMMYYYY(formData.startDate) : formData.startDate) : ''}
+                            onChange={(e) => {
+                                // السماح بالكتابة الحرة - لا تحويل أثناء الكتابة
+                                setFormData((prev: any) => ({ ...prev, startDate: e.target.value }));
+                            }}
+                            onBlur={(e) => {
+                                // بعد الانتهاء من الكتابة، تحويل التاريخ
+                                const value = e.target.value.trim();
+                                if (!value) return;
+                                
+                                const parsedDate = parseDateDDMMYYYY(value);
+                                
+                                // التحقق من صحة التاريخ المحول
+                                if (parsedDate && parsedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    const startDate = new Date(parsedDate);
+                                    if (!isNaN(startDate.getTime())) {
+                                        // تحديث تاريخ البداية
+                                        setFormData((prev: any) => ({ ...prev, startDate: parsedDate }));
+                                        
+                                        // تحديث تاريخ النهاية تلقائيًا بعد سنة
+                                        const newEndDate = new Date(startDate);
+                                        newEndDate.setFullYear(newEndDate.getFullYear() + 1);
+                                        setFormData((prev: any) => ({ 
+                                            ...prev, 
+                                            endDate: format(newEndDate, "yyyy-MM-dd")
+                                        }));
+                                    }
+                                }
+                            }}
+                            className="flex-1"
+                            dir="ltr"
+                            style={{ direction: 'ltr', textAlign: 'left' }}
+                        />
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="shrink-0"
+                                >
+                                    <CalendarIcon className="h-4 w-4" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarComponent
+                                    mode="single"
+                                    selected={formData.startDate ? new Date(formData.startDate) : undefined}
+                                    onSelect={(date) => {
+                                        if (date) {
+                                            const startDate = format(date, "yyyy-MM-dd");
+                                            const newEndDate = new Date(date);
+                                            newEndDate.setFullYear(newEndDate.getFullYear() + 1);
+                                            const endDateString = format(newEndDate, "yyyy-MM-dd");
+                                            
+                                            setFormData((prev: any) => ({ 
+                                                ...prev, 
+                                                startDate,
+                                                endDate: endDateString
+                                            }));
+                                        }
+                                    }}
+                                    initialFocus
+                                    className="pointer-events-auto"
+                                />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
                 </div>
                 <div>
-                    <Label htmlFor="endDate">تاريخ نهاية العقد *</Label>
-                    <Input
-                        id="endDate"
-                        type="date"
-                        value={formData.endDate}
-                        onChange={(e) => setFormData((prev: any) => ({ ...prev, endDate: e.target.value }))}
-                    />
+                    <Label>تاريخ نهاية العقد *</Label>
+                    <div className="flex gap-2">
+                        <Input
+                            type="text"
+                            placeholder="DD-MM-YYYY أو DD/MM/YYYY"
+                            value={formData.endDate ? (formData.endDate.match(/^\d{4}-\d{2}-\d{2}$/) ? formatDateDDMMYYYY(formData.endDate) : formData.endDate) : ''}
+                            onChange={(e) => {
+                                // السماح بالكتابة الحرة - لا تحويل أثناء الكتابة
+                                setFormData((prev: any) => ({ ...prev, endDate: e.target.value }));
+                            }}
+                            onBlur={(e) => {
+                                // بعد الانتهاء من الكتابة، تحويل التاريخ
+                                const value = e.target.value.trim();
+                                if (!value) return;
+                                
+                                const parsedDate = parseDateDDMMYYYY(value);
+                                
+                                // التحقق من صحة التاريخ المحول
+                                if (parsedDate && parsedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    const endDate = new Date(parsedDate);
+                                    if (!isNaN(endDate.getTime())) {
+                                        setFormData((prev: any) => ({ ...prev, endDate: parsedDate }));
+                                    }
+                                }
+                            }}
+                            className="flex-1"
+                            dir="ltr"
+                        />
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="shrink-0"
+                                >
+                                    <CalendarIcon className="h-4 w-4" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <CalendarComponent
+                                    mode="single"
+                                    selected={formData.endDate ? new Date(formData.endDate) : undefined}
+                                    onSelect={(date) => {
+                                        if (date) {
+                                            setFormData((prev: any) => ({ 
+                                                ...prev, 
+                                                endDate: format(date, "yyyy-MM-dd")
+                                            }));
+                                        }
+                                    }}
+                                    initialFocus
+                                    className="pointer-events-auto"
+                                />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
                 </div>
             </div>
 
@@ -525,10 +1079,7 @@ function FormContent({
                     <div className="mt-2 p-2 bg-muted/50 rounded-md">
                         <p className="text-sm text-muted-foreground">
                             قيمة الدفعة الواحدة: {
-                                formData.paymentSchedule === 'monthly' ? (parseFloat(formData.monthlyRent) / 12).toFixed(2) :
-                                formData.paymentSchedule === 'quarterly' ? (parseFloat(formData.monthlyRent) / 4).toFixed(2) :
-                                formData.paymentSchedule === 'semi_annual' ? (parseFloat(formData.monthlyRent) / 2).toFixed(2) :
-                                formData.monthlyRent
+                                (parseFloat(formData.monthlyRent) / parseInt(formData.paymentSchedule)).toFixed(2)
                             } {currencySymbols[currency as keyof typeof currencySymbols]}
                         </p>
                     </div>
@@ -545,8 +1096,6 @@ function FormContent({
                     <SelectContent>
                         <SelectItem value="cash">نقدي</SelectItem>
                         <SelectItem value="cheque">شيك</SelectItem>
-                        <SelectItem value="bank_transfer">حوالة بنكية</SelectItem>
-                        <SelectItem value="card">بطاقة ائتمان</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -572,10 +1121,18 @@ function FormContent({
                         <SelectValue placeholder="اختر جدولة الدفع" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="monthly">شهري</SelectItem>
-                        <SelectItem value="quarterly">ربع سنوي</SelectItem>
-                        <SelectItem value="semi_annual">نصف سنوي</SelectItem>
-                        <SelectItem value="annually">سنوي</SelectItem>
+                        <SelectItem value="1">1 - دفعة</SelectItem>
+                        <SelectItem value="2">2 - دفعتين</SelectItem>
+                        <SelectItem value="3">3 - دفعات</SelectItem>
+                        <SelectItem value="4">4 - دفعات</SelectItem>
+                        <SelectItem value="5">5 - دفعات</SelectItem>
+                        <SelectItem value="6">6 - دفعات</SelectItem>
+                        <SelectItem value="7">7 - دفعات</SelectItem>
+                        <SelectItem value="8">8 - دفعات</SelectItem>
+                        <SelectItem value="9">9 - دفعات</SelectItem>
+                        <SelectItem value="10">10 - دفعات</SelectItem>
+                        <SelectItem value="11">11 - دفعة</SelectItem>
+                        <SelectItem value="12">12 - دفعة</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -617,8 +1174,128 @@ function FormContent({
                 </div>
             )}
 
+            {/* جدول الدفعات للتعديل - لجميع طرق الدفع */}
+            {formData.paymentDates && formData.paymentMethod && (
+                <div className="space-y-3">
+                    <Label>تفاصيل الدفعات (يمكن التعديل)</Label>
+                    <div className="space-y-2 max-h-60 overflow-y-auto border rounded-md p-3">
+                        {formData.paymentDates.split(', ').map((date, index) => {
+                            const amounts = formData.paymentAmounts ? formData.paymentAmounts.split(', ') : [];
+                            const checkNumbers = formData.checkNumbers ? formData.checkNumbers.split(', ') : [];
+                            
+                            return (
+                                <div key={index} className={`grid ${formData.paymentMethod === 'cheque' ? 'grid-cols-3' : 'grid-cols-2'} gap-3 p-3 bg-muted/50 rounded-md`}>
+                                    <div>
+                                        <Label className="text-xs">التاريخ {index + 1}</Label>
+                                        <div className="flex gap-1">
+                                             <Input
+                                                type="text"
+                                                placeholder="DD-MM-YYYY أو DD/MM/YYYY"
+                                                value={date ? (date.match(/^\d{4}-\d{2}-\d{2}$/) ? formatDateDDMMYYYY(date) : date) : ''}
+                                                onChange={(e) => {
+                                                    // السماح بالكتابة الحرة
+                                                    const paymentDates = formData.paymentDates.split(', ');
+                                                    paymentDates[index] = e.target.value;
+                                                    setFormData((prev: any) => ({ 
+                                                        ...prev, 
+                                                        paymentDates: paymentDates.join(', ')
+                                                    }));
+                                                }}
+                                                onBlur={(e) => {
+                                                    // بعد الانتهاء، تحويل التاريخ
+                                                    const value = e.target.value.trim();
+                                                    if (!value) return;
+                                                    
+                                                    const parsedDate = parseDateDDMMYYYY(value);
+                                                    if (parsedDate && parsedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                                        const paymentDates = formData.paymentDates.split(', ');
+                                                        paymentDates[index] = parsedDate;
+                                                        setFormData((prev: any) => ({ 
+                                                            ...prev, 
+                                                            paymentDates: paymentDates.join(', ')
+                                                        }));
+                                                    }
+                                                }}
+                                                className="h-9 text-xs flex-1"
+                                                dir="ltr"
+                                            />
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-9 w-9 p-0 shrink-0"
+                                                    >
+                                                        <CalendarIcon className="h-3 w-3" />
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <CalendarComponent
+                                                        mode="single"
+                                                        selected={date ? new Date(date) : undefined}
+                                                        onSelect={(selectedDate) => {
+                                                            if (selectedDate) {
+                                                                const paymentDates = formData.paymentDates.split(', ');
+                                                                paymentDates[index] = format(selectedDate, "yyyy-MM-dd");
+                                                                setFormData((prev: any) => ({ 
+                                                                    ...prev, 
+                                                                    paymentDates: paymentDates.join(', ')
+                                                                }));
+                                                            }
+                                                        }}
+                                                        initialFocus
+                                                        className="pointer-events-auto"
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-xs">المبلغ {index + 1}</Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="h-9 text-sm"
+                                            placeholder="المبلغ"
+                                            value={amounts[index] || ''}
+                                            onChange={(e) => {
+                                                const newAmounts = [...amounts];
+                                                newAmounts[index] = e.target.value;
+                                                setFormData((prev: any) => ({ 
+                                                    ...prev, 
+                                                    paymentAmounts: newAmounts.join(', ')
+                                                }));
+                                            }}
+                                        />
+                                    </div>
+                                    {formData.paymentMethod === 'cheque' && (
+                                        <div>
+                                            <Label className="text-xs">رقم الشيك {index + 1}</Label>
+                                            <Input
+                                                className="h-9 text-sm"
+                                                placeholder="رقم الشيك"
+                                                value={checkNumbers[index] || ''}
+                                                onChange={(e) => {
+                                                    const newCheckNumbers = [...checkNumbers];
+                                                    newCheckNumbers[index] = e.target.value;
+                                                    setFormData((prev: any) => ({ 
+                                                        ...prev, 
+                                                        checkNumbers: newCheckNumbers.join(', ')
+                                                    }));
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* خيار الدفع الفوري للعقود الجديدة فقط */}
-            {!isEdit && formData.paymentDates && (
+            {!isEdit && (
                 <div>
                     <Label>موعد الدفع *</Label>
                     <div className="space-y-2">
@@ -655,46 +1332,50 @@ function FormContent({
             )}
 
             {/* إدخال أرقام الشيكات إذا كانت طريقة الدفع شيك */}
-            {formData.paymentMethod === 'cheque' && formData.paymentDates && (
-                <div className="space-y-3">
-                    <Label>أرقام الشيكات *</Label>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {formData.paymentDates.split(', ').map((date, index) => (
-                            <div key={index} className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <Label htmlFor={`checkDate${index}`}>التاريخ {index + 1}</Label>
-                                    <Input
-                                        id={`checkDate${index}`}
-                                        type="date"
-                                        value={date}
-                                        onChange={(e) => {
-                                            const paymentDates = formData.paymentDates.split(', ');
-                                            paymentDates[index] = e.target.value;
-                                            setFormData((prev: any) => ({ 
-                                                ...prev, 
-                                                paymentDates: paymentDates.join(', ')
-                                            }));
-                                        }}
-                                    />
+            {/* تم نقل هذا القسم إلى جدول الدفعات أعلاه */}
+
+            {/* رفع ملف العقد (للعقود الجديدة فقط) */}
+            {!isEdit && (
+                <div>
+                    <Label htmlFor="contract-upload" className="flex items-center gap-2">
+                        <Upload className="h-4 w-4" />
+                        إرفاق ملف العقد (اختياري)
+                    </Label>
+                    <div className="mt-2">
+                        {!contractFile ? (
+                            <label 
+                                htmlFor="contract-upload" 
+                                className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-lg hover:border-primary transition-colors cursor-pointer"
+                            >
+                                <Upload className="h-5 w-5 text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">
+                                    اضغط لرفع ملف PDF
+                                </span>
+                            </label>
+                        ) : (
+                            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                                <div className="flex items-center gap-2">
+                                    <Upload className="h-4 w-4 text-primary" />
+                                    <span className="text-sm font-medium">{contractFile.name}</span>
                                 </div>
-                                <div>
-                                    <Label htmlFor={`checkNumber${index}`}>رقم الشيك {index + 1}</Label>
-                                    <Input
-                                        id={`checkNumber${index}`}
-                                        placeholder={`رقم الشيك ${index + 1}`}
-                                        value={formData.checkNumbers.split(', ')[index] || ''}
-                                        onChange={(e) => {
-                                            const checkNumbers = formData.checkNumbers.split(', ');
-                                            checkNumbers[index] = e.target.value;
-                                            setFormData((prev: any) => ({ 
-                                                ...prev, 
-                                                checkNumbers: checkNumbers.join(', ')
-                                            }));
-                                        }}
-                                    />
-                                </div>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => onFileSelect({ target: { files: null } })}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
                             </div>
-                        ))}
+                        )}
+                        <Input
+                            id="contract-upload"
+                            type="file"
+                            accept="application/pdf"
+                            onChange={onFileSelect}
+                            className="hidden"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">PDF فقط، حد أقصى 10MB</p>
                     </div>
                 </div>
             )}

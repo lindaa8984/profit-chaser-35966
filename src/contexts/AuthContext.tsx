@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
+const supabase = supabaseClient as any;
 import { toast } from 'sonner';
 
 interface AuthContextType {
@@ -160,6 +161,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // Check if this is the Try demo user
+    const isTryUser = user?.email === 'try@demo.local';
+    
+    if (isTryUser && user?.id) {
+      // Delete all Try user data before signing out
+      try {
+        await Promise.all([
+          supabase.from('payments').delete().eq('user_id', user.id),
+          supabase.from('contracts').delete().eq('user_id', user.id),
+          supabase.from('maintenance_requests').delete().eq('user_id', user.id),
+          supabase.from('clients').delete().eq('user_id', user.id),
+          supabase.from('units').delete().eq('user_id', user.id),
+          supabase.from('properties').delete().eq('user_id', user.id),
+        ]);
+      } catch (cleanupError) {
+        console.error('Error cleaning up Try user data:', cleanupError);
+      }
+    }
+    
     const { error } = await supabase.auth.signOut();
     if (error) {
       toast.error('فشل تسجيل الخروج');

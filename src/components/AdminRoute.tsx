@@ -23,8 +23,8 @@ const AdminRoute = ({ children }: AdminRouteProps) => {
     return <Navigate to="/auth" replace />;
   }
 
-  // Check if user has admin role
-  if (userRole !== 'admin') {
+  // Check if user has admin role AND is the super admin
+  if (userRole !== 'admin' || user.email !== 'm_azoz84@yahoo.com') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -33,7 +33,7 @@ const AdminRoute = ({ children }: AdminRouteProps) => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground mb-2">وصول مرفوض</h1>
-            <p className="text-muted-foreground">هذه الصفحة مخصصة للمديرين فقط</p>
+            <p className="text-muted-foreground">هذه الصفحة مخصصة لمدير النظام فقط</p>
           </div>
           <button 
             onClick={() => window.history.back()}

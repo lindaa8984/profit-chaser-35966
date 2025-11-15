@@ -73,41 +73,52 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* تفتيح الخلفية لمزيد من الوضوح */
+    --background: 222.2 30% 18%;
     --foreground: 210 40% 98%;
 
-    --card: 222.2 84% 4.9%;
+    /* تفتيح الكروت */
+    --card: 222.2 25% 22%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 222.2 84% 4.9%;
+    /* تفتيح القوائم المنبثقة */
+    --popover: 222.2 25% 22%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* ألوان أساسية */
+    --primary: 214 84% 56%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 217.2 32.6% 17.5%;
+    /* تفتيح الألوان الثانوية */
+    --secondary: 217.2 25% 28%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    /* تفتيح الألوان المكتومة */
+    --muted: 217.2 25% 28%;
+    --muted-foreground: 215 20.2% 75%;
 
-    --accent: 217.2 32.6% 17.5%;
+    /* تفتيح الألوان البارزة */
+    --accent: 217.2 25% 30%;
     --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 62.8% 30.6%;
+    /* تفتيح اللون التحذيري */
+    --destructive: 0 62.8% 50%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
+    /* تفتيح الحدود */
+    --border: 217.2 25% 32%;
+    --input: 217.2 25% 32%;
+    --ring: 214 84% 56%;
+    
+    /* تفتيح السايدبار */
+    --sidebar-background: 240 18% 24%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary: 214 84% 56%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent: 240 12% 30%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-border: 240 12% 32%;
+    --sidebar-ring: 214 84% 56%;
   }
 }
 

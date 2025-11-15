@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
+const supabase = supabaseClient as any;
 import { useAuth } from '@/contexts/AuthContext';
 import { Property, Client, Contract, Payment, MaintenanceRequest } from '@/contexts/AppContext';
 import { toast } from 'sonner';
@@ -55,6 +56,7 @@ export function useSupabaseProperties() {
         
         return {
           id: parseInt(prop.id.slice(0, 8), 16),
+          uuid: prop.id, // Store original UUID
           name: prop.name,
           type: prop.type,
           location: prop.location,
@@ -71,6 +73,7 @@ export function useSupabaseProperties() {
             number: unit.unit_number,
             floor: unit.floor,
             isAvailable: unit.is_available,
+            unitType: unit.unit_type as 'residential' | 'commercial' | undefined,
             rentedBy: unit.rented_by ? parseInt(unit.rented_by.slice(0, 8), 16) : undefined
           }))
         };
@@ -82,6 +85,44 @@ export function useSupabaseProperties() {
       setProperties([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // دالة لتصحيح تزامن حالة الوحدات مع العقود
+  const syncUnitsWithContracts = async (propertyUuid: string, contracts: Contract[]) => {
+    try {
+      // جلب جميع الوحدات للعقار
+      const { data: units, error: fetchError } = await supabase
+        .from('units')
+        .select('*')
+        .eq('property_id', propertyUuid);
+
+      if (fetchError || !units) return;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // تحديث كل وحدة بناءً على وجود عقد نشط أم لا
+      for (const unit of units) {
+        const hasActiveContract = contracts.some(c => {
+          const endDate = new Date(c.endDate);
+          endDate.setHours(0, 0, 0, 0);
+          
+          return c.unitNumber === unit.unit_number &&
+            endDate >= today &&
+            c.status !== 'terminated';
+        });
+
+        // تحديث الوحدة إذا كانت حالتها لا تتطابق مع وجود عقد نشط
+        if (unit.is_available === hasActiveContract) {
+          await supabase
+            .from('units')
+            .update({ is_available: !hasActiveContract })
+            .eq('id', unit.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error syncing units with contracts:', error);
     }
   };
 
@@ -125,7 +166,8 @@ export function useSupabaseProperties() {
           property_id: propData.id,
           unit_number: unit.number,
           floor: unit.floor,
-          is_available: unit.isAvailable
+          is_available: unit.isAvailable,
+          unit_type: unit.unitType || 'residential'
         }));
 
         const { error: unitsError } = await supabase
@@ -150,7 +192,10 @@ export function useSupabaseProperties() {
 
     try {
       const property = properties.find(p => p.id === id);
-      if (!property) return;
+      if (!property || !property.uuid) {
+        console.error('Property not found or missing UUID');
+        return;
+      }
 
       const updateData: any = {};
       if (updates.name !== undefined) updateData.name = updates.name;
@@ -162,17 +207,123 @@ export function useSupabaseProperties() {
       if (updates.availableUnits !== undefined) updateData.available_units = updates.availableUnits;
       if (updates.price !== undefined) updateData.price = updates.price;
       if (updates.status !== undefined) updateData.status = updates.status;
+      if (updates.unitsPerFloor !== undefined) updateData.units_per_floor = updates.unitsPerFloor;
+      if (updates.unitFormat !== undefined) updateData.unit_format = updates.unitFormat;
 
       const { error } = await supabase
         .from('properties')
         .update(updateData)
-        .eq('user_id', user.id)
-        .eq('name', property.name);
+        .eq('id', property.uuid);
 
       if (error) throw error;
 
+      // If numbering-related fields changed and units weren't explicitly provided,
+      // update unit numbers in-place to match the selected format without losing statuses
+      if ((updates.unitFormat !== undefined || updates.unitsPerFloor !== undefined || updates.floors !== undefined) && updates.units === undefined) {
+        const effectiveFloors = updates.floors ?? property.floors;
+        const effectiveUnitsPerFloor = updates.unitsPerFloor ?? property.unitsPerFloor ?? Math.floor(property.totalUnits / Math.max(1, property.floors));
+        const effectiveFormat = updates.unitFormat ?? property.unitFormat ?? '101';
+
+        if (effectiveFloors && effectiveUnitsPerFloor) {
+          // Fetch existing units for this property
+          const { data: existingUnits, error: fetchUnitsError } = await supabase
+            .from('units')
+            .select('id, floor, unit_number')
+            .eq('property_id', property.uuid)
+            .order('floor', { ascending: true });
+
+          if (!fetchUnitsError && existingUnits && existingUnits.length > 0) {
+            const updatesBatch: any[] = [];
+            
+            // Group units by floor
+            const unitsByFloor = existingUnits.reduce((acc: any, unit) => {
+              if (!acc[unit.floor]) acc[unit.floor] = [];
+              acc[unit.floor].push(unit);
+              return acc;
+            }, {});
+
+            // إعادة ترقيم قوية بصيغة 101 فقط لكل الوحدات الموجودة، بدون التقيد بوحدات لكل طابق
+            const floors = Object.keys(unitsByFloor)
+              .map((f: string) => parseInt(f, 10))
+              .sort((a: number, b: number) => a - b);
+
+            for (const floor of floors) {
+              const floorUnits = unitsByFloor[floor] || [];
+
+              // ترتيب الوحدات الحالية لضمان استقرار الترقيم
+              floorUnits.sort((a: any, b: any) => {
+                const aNum = parseInt(a.unit_number);
+                const bNum = parseInt(b.unit_number);
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                  return aNum - bNum;
+                }
+                return a.unit_number.localeCompare(b.unit_number);
+              });
+
+              // ترقيم كل الوحدات على هذا الطابق بصيغة 101: floor + 2 digits
+              for (let i = 0; i < floorUnits.length; i++) {
+                const newNumber = `${floor}${String(i + 1).padStart(2, '0')}`;
+                const oldNumber = floorUnits[i].unit_number;
+
+                if (oldNumber !== newNumber) {
+                  updatesBatch.push(
+                    supabase
+                      .from('units')
+                      .update({ unit_number: newNumber })
+                      .eq('id', floorUnits[i].id)
+                  );
+                  // تحديث العقود المرتبطة بنفس الوحدة
+                  updatesBatch.push(
+                    supabase
+                      .from('contracts')
+                      .update({ unit_number: newNumber })
+                      .eq('property_id', property.uuid)
+                      .eq('unit_number', oldNumber)
+                  );
+                }
+              }
+            }
+
+            if (updatesBatch.length > 0) {
+              await Promise.all(updatesBatch);
+              console.log(`تم تحديث ${updatesBatch.length / 2} وحدة بنظام الترقيم الجديد`);
+            }
+          }
+        }
+      }
+
+      // Update units if provided
+      if (updates.units !== undefined && updates.units.length > 0) {
+        // Delete existing units
+        await supabase
+          .from('units')
+          .delete()
+          .eq('property_id', property.uuid);
+
+        // Insert new units
+        const unitsData = updates.units.map(unit => ({
+          property_id: property.uuid!,
+          unit_number: unit.number,
+          floor: unit.floor,
+          is_available: unit.isAvailable,
+          unit_type: unit.unitType || 'residential'
+        }));
+
+        const { error: unitsError } = await supabase
+          .from('units')
+          .insert(unitsData);
+
+        if (unitsError) throw unitsError;
+      }
+
       await fetchProperties();
-      toast.success('تم تحديث العقار بنجاح');
+      
+      // إظهار رسالة توضح التحديثات
+      if (updates.unitFormat !== undefined || updates.unitsPerFloor !== undefined || updates.floors !== undefined) {
+        toast.success('تم تحديث العقار ونظام ترقيم الوحدات بنجاح');
+      } else {
+        toast.success('تم تحديث العقار بنجاح');
+      }
     } catch (error: any) {
       console.error('Error updating property:', error);
       toast.error('فشل تحديث العقار');
@@ -209,7 +360,8 @@ export function useSupabaseProperties() {
     addProperty,
     updateProperty,
     deleteProperty,
-    refetch: fetchProperties
+    refetch: fetchProperties,
+    syncUnitsWithContracts
   };
 }
 
@@ -408,12 +560,14 @@ export function useSupabaseContracts() {
         paymentMethod: contract.payment_method,
         numberOfPayments: contract.number_of_payments || '',
         paymentDates: contract.payment_dates || '',
+        paymentAmounts: contract.payment_amounts || '', // ✅ إضافة المبالغ
         checkDates: contract.check_dates || '',
         bankName: contract.bank_name || '',
         checkNumbers: contract.check_numbers || '',
         unitNumber: contract.unit_number || '',
         status: (contract.status || 'active') as 'active' | 'terminated',
-        terminatedDate: contract.terminated_date || undefined
+        terminatedDate: contract.terminated_date || undefined,
+        contractFileUrl: contract.contract_file_url || null
       }));
 
       setContracts(formattedContracts);
@@ -425,37 +579,89 @@ export function useSupabaseContracts() {
     }
   };
 
-  const addContract = async (contract: Omit<Contract, 'id'>) => {
+  const addContract = async (contract: any) => {
     if (!user) {
       toast.error('يجب تسجيل الدخول أولاً');
       return '';
     }
 
     try {
-      // Find the actual UUIDs from the database
-      const { data: propertyData } = await supabase
-        .from('properties')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(100);
-
+      // جلب UUID للعميل
       const { data: clientData } = await supabase
         .from('clients')
         .select('id')
-        .eq('user_id', user.id)
-        .limit(100);
-
-      // Find matching UUIDs
-      const propertyUuid = propertyData?.find(p => 
-        parseInt(p.id.slice(0, 8), 16) === contract.propertyId
-      )?.id;
+        .eq('user_id', user.id);
       
       const clientUuid = clientData?.find(c => 
         parseInt(c.id.slice(0, 8), 16) === contract.clientId
       )?.id;
 
-      if (!propertyUuid || !clientUuid) {
-        toast.error('العقار أو العميل غير موجود');
+      if (!clientUuid) {
+        console.error('Client UUID not found:', { 
+          clientId: contract.clientId,
+          clientData: clientData?.length
+        });
+        toast.error('العميل غير موجود - يرجى المحاولة مرة أخرى');
+        return '';
+      }
+
+      // تحديد UUID العقار بناءً على نوع العقار
+      let propertyUuid: string | null = null;
+      let unitNumberValue: string | null = contract.unitNumber || null;
+      
+      if (contract.propertyType === 'unit' && contract.propertyId) {
+        // بحث عن UUID للعقار
+        const { data: propertyData } = await supabase
+          .from('properties')
+          .select('id')
+          .eq('user_id', user.id);
+        
+        propertyUuid = propertyData?.find(p => 
+          parseInt(p.id.slice(0, 8), 16) === contract.propertyId
+        )?.id || null;
+
+        if (!propertyUuid) {
+          console.error('Property UUID not found:', { 
+            propertyId: contract.propertyId,
+            propertyData: propertyData?.length
+          });
+          toast.error('العقار غير موجود - يرجى المحاولة مرة أخرى');
+          return '';
+        }
+      } else if (contract.propertyType === 'shop' && contract.shopId) {
+        // للمحلات: استخدم العقار المرتبط بالوحدة ورقم الوحدة
+        const { data: unitData } = await supabase
+          .from('units')
+          .select('unit_number, property_id')
+          .eq('id', contract.shopId)
+          .single();
+        
+        if (unitData) {
+          propertyUuid = unitData.property_id || null;
+          unitNumberValue = unitData.unit_number || unitNumberValue;
+        }
+      } else if (contract.propertyType === 'ground_house' && contract.groundHouseId) {
+        // للبيوت الأرضية/الفلل: نفس منطق المحلات
+        const { data: unitData } = await supabase
+          .from('units')
+          .select('unit_number, property_id')
+          .eq('id', contract.groundHouseId)
+          .single();
+        
+        if (unitData) {
+          propertyUuid = unitData.property_id || null;
+          unitNumberValue = unitData.unit_number || unitNumberValue;
+        }
+      }
+
+      if (!propertyUuid) {
+        console.error('Property UUID could not be determined:', { 
+          propertyType: contract.propertyType,
+          propertyId: contract.propertyId,
+          shopId: contract.shopId,
+          groundHouseId: contract.groundHouseId
+        });
+        toast.error('العقار غير موجود أو المحل/البيت غير مرتبط بعقار');
         return '';
       }
 
@@ -473,10 +679,11 @@ export function useSupabaseContracts() {
           payment_method: contract.paymentMethod,
           number_of_payments: contract.numberOfPayments,
           payment_dates: contract.paymentDates,
+          payment_amounts: contract.paymentAmounts,
           check_dates: contract.checkDates,
           bank_name: contract.bankName,
           check_numbers: contract.checkNumbers,
-          unit_number: contract.unitNumber,
+          unit_number: unitNumberValue,
           status: contract.status
         })
         .select()
@@ -486,7 +693,7 @@ export function useSupabaseContracts() {
 
       await fetchContracts();
       toast.success('تم إضافة العقد بنجاح');
-      return data.id; // Return UUID instead of integer
+      return data.id; // Return UUID
     } catch (error: any) {
       console.error('Error adding contract:', error);
       toast.error('فشل إضافة العقد');
@@ -511,6 +718,15 @@ export function useSupabaseContracts() {
       if (updates.status !== undefined) updateData.status = updates.status;
       if (updates.terminatedDate !== undefined) updateData.terminated_date = updates.terminatedDate;
       if (updates.unitNumber !== undefined) updateData.unit_number = updates.unitNumber;
+      if (updates.contractFileUrl !== undefined) updateData.contract_file_url = updates.contractFileUrl;
+      if (updates.paymentAmounts !== undefined) updateData.payment_amounts = updates.paymentAmounts;
+      if (updates.paymentMethod !== undefined) updateData.payment_method = updates.paymentMethod;
+      if (updates.paymentSchedule !== undefined) updateData.payment_schedule = updates.paymentSchedule;
+      if (updates.numberOfPayments !== undefined) updateData.number_of_payments = updates.numberOfPayments;
+      if (updates.paymentDates !== undefined) updateData.payment_dates = updates.paymentDates;
+      if (updates.checkDates !== undefined) updateData.check_dates = updates.checkDates;
+      if (updates.checkNumbers !== undefined) updateData.check_numbers = updates.checkNumbers;
+      if (updates.bankName !== undefined) updateData.bank_name = updates.bankName;
 
       const { error } = await supabase
         .from('contracts')
@@ -687,7 +903,7 @@ export function useSupabasePayments() {
       );
 
       if (!foundPayment) {
-        toast.error('المدفوعة غير موجودة');
+        console.warn('Payment not found:', id);
         return;
       }
 
@@ -695,6 +911,9 @@ export function useSupabasePayments() {
       if (updates.status !== undefined) updateData.status = updates.status;
       if (updates.paidDate !== undefined) updateData.paid_date = updates.paidDate;
       if (updates.amount !== undefined) updateData.amount = updates.amount;
+      if (updates.dueDate !== undefined) updateData.due_date = updates.dueDate;
+      if (updates.paymentMethod !== undefined) updateData.payment_method = updates.paymentMethod;
+      if (updates.bankName !== undefined) updateData.bank_name = updates.bankName;
 
       const { error } = await supabase
         .from('payments')
@@ -728,7 +947,7 @@ export function useSupabasePayments() {
       );
 
       if (!foundPayment) {
-        toast.error('المدفوعة غير موجودة');
+        console.warn('Payment not found:', id);
         return;
       }
 

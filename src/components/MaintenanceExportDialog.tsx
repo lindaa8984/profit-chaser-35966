@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Download, Cloud, FileSpreadsheet } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import * as XLSX from 'xlsx';
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 interface MaintenanceExportDialogProps {
   open: boolean;
@@ -44,8 +45,8 @@ export function MaintenanceExportDialog({ open, onClose }: MaintenanceExportDial
       "الوصف": request.description,
       "الحالة": getStatusLabel(request.status),
       "الأولوية": getPriorityLabel(request.priority),
-      "تاريخ الطلب": request.requestDate,
-      "تاريخ الإكمال": request.completedDate || "غير مكتمل"
+      "تاريخ الطلب": formatDateDDMMYYYY(request.requestDate),
+      "تاريخ الإكمال": request.completedDate ? formatDateDDMMYYYY(request.completedDate) : "غير مكتمل"
     }));
   };
 

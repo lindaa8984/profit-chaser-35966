@@ -14,14 +14,20 @@ import {
   Building2,
   Users,
   ClipboardList,
-  PieChart
+  PieChart,
+  Shield,
+  Upload
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { BackupDialog } from "@/components/BackupDialog";
+import { IntelligentImportDialog } from "@/components/IntelligentImportDialog";
 
 export default function Reports() {
   const { properties, contracts, payments, maintenanceRequests, currency } = useApp();
   const [selectedPeriod, setSelectedPeriod] = useState("monthly");
   const [selectedProperty, setSelectedProperty] = useState("all");
+  const [showBackupDialog, setShowBackupDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   const currencySymbols = useMemo(() => ({
     SAR: "ر.س",
@@ -123,6 +129,20 @@ export default function Reports() {
         </div>
         
         <div className="flex gap-3">
+          <Button 
+            onClick={() => setShowBackupDialog(true)}
+            variant="outline"
+          >
+            <Shield className="h-4 w-4 mr-1" />
+            نسخ احتياطي
+          </Button>
+          <Button 
+            onClick={() => setShowImportDialog(true)}
+            variant="outline"
+          >
+            <Upload className="h-4 w-4 mr-1" />
+            استيراد
+          </Button>
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -296,6 +316,19 @@ export default function Reports() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Backup Dialog */}
+      <BackupDialog 
+        open={showBackupDialog}
+        onClose={() => setShowBackupDialog(false)}
+        section="all"
+      />
+
+      {/* Import Dialog */}
+      <IntelligentImportDialog 
+        open={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+      />
     </div>
   );
 }

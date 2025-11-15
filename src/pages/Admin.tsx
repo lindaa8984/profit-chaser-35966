@@ -1,13 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
+const supabase = supabaseClient as any;
 import { Layout } from '@/components/Layout';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import { Copy, Plus, Trash2, Building2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ActivationCode {
@@ -21,6 +23,7 @@ interface ActivationCode {
 }
 
 export default function Admin() {
+  const navigate = useNavigate();
   const [codes, setCodes] = useState<ActivationCode[]>([]);
   const [loading, setLoading] = useState(false);
   const [duration, setDuration] = useState('365');
@@ -89,9 +92,21 @@ export default function Admin() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">لوحة الإدارة</h1>
-          <p className="text-muted-foreground">إدارة أكواد التفعيل</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">لوحة الإدارة</h1>
+            <p className="text-muted-foreground">إدارة أكواد التفعيل والمستخدمين</p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate('/companies')} variant="outline" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              إدارة الشركات
+            </Button>
+            <Button onClick={() => navigate('/create-admin')} className="gap-2">
+              <Plus className="h-4 w-4" />
+              إنشاء مستخدم مدير
+            </Button>
+          </div>
         </div>
 
         {/* Generate Code Section */}

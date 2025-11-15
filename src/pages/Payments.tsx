@@ -3,12 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Download, Shield, Upload, Calendar } from "lucide-react";
+import { Search, Download, Upload, Calendar, Filter } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/contexts/AppContext";
 import { PaymentDetailsDialog } from "@/components/PaymentDetailsDialog";
 import { PaymentExportDialog } from "@/components/PaymentExportDialog";
 import { PaymentEditDialog } from "@/components/PaymentEditDialog";
-import { BackupDialog } from "@/components/BackupDialog";
 import { IntelligentImportDialog } from "@/components/IntelligentImportDialog";
 
 import { GroupedPaymentCard } from "@/components/GroupedPaymentCard";
@@ -24,8 +24,8 @@ export default function Payments() {
   const [editingPayment, setEditingPayment] = useState(null);
   
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [propertyFilterId, setPropertyFilterId] = useState<string | null>(null);
   
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showChequeSearch, setShowChequeSearch] = useState(false);
@@ -36,8 +36,8 @@ export default function Payments() {
     if (filter === 'pending') {
       setFilterStatus('pending');
       toast({
-        title: "المدفوعات المعلقة",
-        description: "تم عرض المدفوعات المعلقة فقط",
+        title: "المدفوعات المجدولة",
+        description: "تم عرض المدفوعات المجدولة فقط",
       });
     }
   }, [searchParams, toast]);
@@ -87,16 +87,25 @@ export default function Payments() {
       `${month}/${day}`, // MM/DD
       `${day}-${month}`, // DD-MM
       `${month}-${day}`, // MM-DD
-      `0${month}` === cleanSearch ? true : false, // للشهر فقط مثل "09"
-      month === cleanSearch ? true : false, // للشهر بدون صفر
+      day, // اليوم فقط
+      month, // الشهر فقط
+      year, // السنة فقط
     ];
     
     return formats.some(format => 
-      typeof format === 'string' && format.includes(cleanSearch)
-    ) || formats.includes(true);
+      format.includes(cleanSearch)
+    );
   };
 
   const filteredPayments = payments.filter(payment => {
+    // Check property filter first
+    if (propertyFilterId) {
+      const contract = contracts.find(c => c.id === payment.contractId);
+      if (!contract || contract.propertyId.toString() !== propertyFilterId) {
+        return false;
+      }
+    }
+
     // إذا كان البحث في الشيكات مفعل، أظهر الشيكات فقط
     if (showChequeSearch) {
       if (payment.paymentMethod !== 'cheque') return false;
@@ -115,12 +124,12 @@ export default function Payments() {
     const clientName = getClientName(payment.contractId);
     const matchesSearch = 
       clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.dueDate.includes(searchTerm) ||
-      (payment.paidDate && payment.paidDate.includes(searchTerm));
+      matchesDateFlexible(payment.dueDate, searchTerm) ||
+      (payment.paidDate && matchesDateFlexible(payment.paidDate, searchTerm));
     
     const matchesDateFilter = !searchByDate || 
-      payment.dueDate === searchByDate ||
-      (payment.paidDate && payment.paidDate === searchByDate);
+      matchesDateFlexible(payment.dueDate, searchByDate) ||
+      (payment.paidDate && matchesDateFlexible(payment.paidDate, searchByDate));
     
     const matchesFilter = filterStatus === "all" || payment.status === filterStatus;
     return matchesSearch && matchesFilter && matchesDateFilter;
@@ -151,12 +160,12 @@ export default function Payments() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">المدفوعات</h1>
           <p className="text-muted-foreground">إدارة مدفوعات الإيجارات</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button 
             onClick={() => {
               setShowChequeSearch(!showChequeSearch);
@@ -172,19 +181,29 @@ export default function Payments() {
             <Search className="h-4 w-4 mr-1" />
             {showChequeSearch ? "إظهار الكل" : "بحث الشيكات"}
           </Button>
+          <Select 
+            value={propertyFilterId || "all"} 
+            onValueChange={(value) => setPropertyFilterId(value === "all" ? null : value)}
+          >
+            <SelectTrigger className="w-[200px]">
+              <Filter className="h-4 w-4 ml-1" />
+              <SelectValue placeholder="فلترة الدفعات حسب العقار" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">جميع العقارات</SelectItem>
+              {properties.map((property) => (
+                <SelectItem key={property.id} value={property.id.toString()}>
+                  {property.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button 
             onClick={() => setShowExportDialog(true)}
             variant="outline"
           >
             <Download className="h-4 w-4 mr-1" />
             تصدير
-          </Button>
-          <Button 
-            onClick={() => setShowBackupDialog(true)}
-            variant="outline"
-          >
-            <Shield className="h-4 w-4 mr-1" />
-            نسخ احتياطي
           </Button>
           <Button 
             onClick={() => setShowImportDialog(true)}
@@ -209,10 +228,11 @@ export default function Payments() {
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="رقم الشيك أو التاريخ (YYYY-MM-DD)..."
+                    placeholder="رقم الشيك أو التاريخ (DD/MM/YYYY)..."
                     value={chequeSearchTerm}
                     onChange={(e) => setChequeSearchTerm(e.target.value)}
                     className="pl-10"
+                    dir="ltr"
                   />
                 </div>
                 <select
@@ -221,7 +241,7 @@ export default function Payments() {
                   className="px-3 py-2 border border-border rounded-md bg-background min-w-[140px]"
                 >
                   <option value="all">جميع الشيكات</option>
-                  <option value="pending">معلق</option>
+                  <option value="pending">مجدول</option>
                   <option value="paid">مدفوع</option>
                   <option value="overdue">متأخر</option>
                   <option value="scheduled">مجدول</option>
@@ -242,11 +262,12 @@ export default function Payments() {
               <div className="relative min-w-[180px]">
                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  type="date"
-                  placeholder="البحث بالتاريخ..."
+                  type="text"
+                  placeholder="يوم/شهر/سنة (DD/MM/YYYY)"
                   value={searchByDate}
                   onChange={(e) => setSearchByDate(e.target.value)}
                   className="pl-10"
+                  dir="ltr"
                 />
               </div>
               <select
@@ -255,7 +276,7 @@ export default function Payments() {
                 className="px-3 py-2 border border-border rounded-md bg-background min-w-[140px]"
               >
                 <option value="all">جميع المدفوعات</option>
-                <option value="pending">معلق</option>
+                <option value="pending">مجدول</option>
                 <option value="paid">مدفوع</option>
                 <option value="overdue">متأخر</option>
                 <option value="scheduled">مجدول</option>
@@ -303,12 +324,6 @@ export default function Payments() {
         onClose={() => setShowExportDialog(false)}
       />
 
-      {/* Backup Dialog */}
-      <BackupDialog 
-        open={showBackupDialog}
-        onClose={() => setShowBackupDialog(false)}
-        section="payments"
-      />
 
       {/* Intelligent Import Dialog */}
       <IntelligentImportDialog 

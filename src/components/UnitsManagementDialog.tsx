@@ -35,24 +35,24 @@ export function UnitsManagementDialog({ property, trigger }: UnitsManagementDial
     setUnits(property.units || []);
   }, [property.units]);
 
-  // دالة للتحقق من حالة الوحدة بناء على العقود والبيانات المحفوظة
+  // دالة للتحقق من حالة الوحدة بناء على العقود النشطة (مصدر الحقيقة الوحيد)
   const getUnitOccupancyStatus = (unitNumber: string) => {
-    // فحص العقود الفعالة أولاً
-    const unitContract = contracts.find(c => 
-      c.propertyId === property.id && 
-      c.unitNumber === unitNumber &&
-      new Date(c.endDate) > new Date() &&
-      c.status !== 'terminated'
-    );
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
-    // فحص حالة الوحدة المحفوظة في البيانات
-    const unitData = units.find(u => u.number === unitNumber);
-    const isUnavailableInData = unitData && !unitData.isAvailable;
+    // فحص العقود النشطة فقط - هذا هو مصدر الحقيقة
+    const unitContract = contracts.find(c => {
+      const endDate = new Date(c.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      
+      return c.propertyId === property.id && 
+        c.unitNumber === unitNumber &&
+        endDate >= today &&
+        c.status !== 'terminated';
+    });
     
-    // الوحدة مشغولة إذا كان لها عقد فعال أو محفوظة كمشغولة في البيانات
-    const isOccupied = !!unitContract || !!isUnavailableInData;
-    
-    return isOccupied;
+    // إذا كان هناك عقد نشط، الوحدة مشغولة - وإلا فهي متاحة
+    return !!unitContract;
   };
 
   const toggleUnitAvailability = (unitNumber: string) => {
@@ -144,6 +144,10 @@ export function UnitsManagementDialog({ property, trigger }: UnitsManagementDial
 
   const availableCount = units.filter(unit => !getUnitOccupancyStatus(unit.number)).length;
   const occupiedCount = units.filter(unit => getUnitOccupancyStatus(unit.number)).length;
+  const commercialCount = units.filter(unit => unit.unitType === 'commercial').length;
+  const commercialAvailableCount = units.filter(unit => 
+    unit.unitType === 'commercial' && !getUnitOccupancyStatus(unit.number)
+  ).length;
 
   // Group units by floor for better display
   const unitsByFloor = units.reduce((acc, unit) => {
@@ -200,19 +204,35 @@ export function UnitsManagementDialog({ property, trigger }: UnitsManagementDial
 
         <div className="space-y-6">
           {/* Unit Statistics */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-center">
-              <div className="text-success font-medium">الوحدات المتاحة</div>
-              <div className="text-success text-3xl font-bold">{availableCount}</div>
+          <div className={`grid gap-3 ${commercialCount > 0 ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3'}`}>
+            <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg text-center">
+              <div className="text-primary font-medium text-sm">إجمالي الوحدات</div>
+              <div className="text-primary text-2xl font-bold">{units.length}</div>
             </div>
-            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-center">
-              <div className="text-destructive font-medium">الوحدات المشغولة</div>
-              <div className="text-destructive text-3xl font-bold">{occupiedCount}</div>
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-center">
+              <div className="text-destructive font-medium text-sm">الوحدات المشغولة</div>
+              <div className="text-destructive text-2xl font-bold">{occupiedCount}</div>
             </div>
-            <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg text-center">
-              <div className="text-primary font-medium">إجمالي الوحدات</div>
-              <div className="text-primary text-3xl font-bold">{units.length}</div>
+            <div className="p-3 bg-success/10 border border-success/20 rounded-lg text-center">
+              <div className="text-success font-medium text-sm">الوحدات المتاحة</div>
+              <div className="text-success text-2xl font-bold">{availableCount}</div>
             </div>
+            {commercialCount > 0 && (
+              <>
+                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-center">
+                  <div className="text-blue-700 dark:text-blue-300 font-medium text-sm">إجمالي المحلات</div>
+                  <div className="text-blue-700 dark:text-blue-300 text-2xl font-bold">{commercialCount}</div>
+                </div>
+                <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-center">
+                  <div className="text-cyan-700 dark:text-cyan-300 font-medium text-sm">المحلات المتاحة</div>
+                  <div className="text-cyan-700 dark:text-cyan-300 text-2xl font-bold">{commercialAvailableCount}</div>
+                </div>
+                <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-center">
+                  <div className="text-orange-700 dark:text-orange-300 font-medium text-sm">المحلات المشغولة</div>
+                  <div className="text-orange-700 dark:text-orange-300 text-2xl font-bold">{commercialCount - commercialAvailableCount}</div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Control Buttons */}
@@ -265,26 +285,31 @@ export function UnitsManagementDialog({ property, trigger }: UnitsManagementDial
                               className={`
                                 p-3 border rounded-lg cursor-pointer transition-all duration-200
                                 hover:scale-[1.02] hover:shadow-md relative
-                                ${isOccupied
-                                  ? 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10'
-                                  : 'border-success/30 bg-success/5 hover:bg-success/10'
-                                }
-                              `}
-                              onClick={() => toggleUnitAvailability(unit.number)}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="font-semibold text-lg">{unit.number}</div>
-                                <Badge 
-                                  variant="outline" 
-                                  className={`text-xs ${!isOccupied
-                                    ? "bg-success/10 text-success border-success/20" 
-                                    : "bg-destructive/10 text-destructive border-destructive/20"
-                                  }`}
-                                >
-                                  {!isOccupied ? 'متاحة' : 'مشغولة'}
-                                </Badge>
-                              </div>
-                            </div>
+                                 ${isOccupied
+                                   ? 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10'
+                                   : 'border-success/30 bg-success/5 hover:bg-success/10'
+                                 }
+                               `}
+                               onClick={() => toggleUnitAvailability(unit.number)}
+                             >
+                               <div className="flex flex-col gap-1">
+                                 <div className="flex items-center justify-between">
+                                   <div className="font-semibold text-lg">{unit.number}</div>
+                                   <Badge 
+                                     variant="outline" 
+                                     className={`text-xs ${!isOccupied
+                                       ? "bg-success/10 text-success border-success/20" 
+                                       : "bg-destructive/10 text-destructive border-destructive/20"
+                                     }`}
+                                   >
+                                     {!isOccupied ? 'متاحة' : 'مشغولة'}
+                                   </Badge>
+                                 </div>
+                                 <Badge variant="secondary" className="text-xs w-fit">
+                                   {unit.unitType === 'commercial' ? 'تجاري' : 'سكني'}
+                                 </Badge>
+                               </div>
+                             </div>
                           );
                         })}
                     </div>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +9,12 @@ import {
   User, 
   Building2, 
   Calendar, 
-  X
+  X,
+  Printer
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { formatDateDDMMYYYY } from "@/lib/utils";
+import { PaymentReceiptDialog } from "@/components/PaymentReceiptDialog";
 
 interface PaymentDetailsDialogProps {
   payment: any;
@@ -19,6 +23,7 @@ interface PaymentDetailsDialogProps {
 
 export function PaymentDetailsDialog({ payment, onClose }: PaymentDetailsDialogProps) {
   const { contracts, clients, properties, currency } = useApp();
+  const [showReceipt, setShowReceipt] = useState(false);
 
   const currencySymbols = {
     SAR: "ر.س",
@@ -48,7 +53,7 @@ export function PaymentDetailsDialog({ payment, onClose }: PaymentDetailsDialogP
   const getStatusBadge = (status: string) => {
     switch(status) {
       case "paid": return <Badge className="bg-success/10 text-success border-success/20">مدفوع</Badge>;
-      case "pending": return <Badge className="bg-warning/10 text-warning border-warning/20">معلق</Badge>;
+      case "pending": return <Badge className="bg-warning/10 text-warning border-warning/20">مجدول</Badge>;
       case "overdue": return <Badge className="bg-destructive/10 text-destructive border-destructive/20">متأخر</Badge>;
       default: return <Badge>{status}</Badge>;
     }
@@ -64,6 +69,10 @@ export function PaymentDetailsDialog({ payment, onClose }: PaymentDetailsDialogP
     }
   };
 
+  if (showReceipt) {
+    return <PaymentReceiptDialog payment={payment} onClose={() => setShowReceipt(false)} />;
+  }
+
   return (
     <Dialog open={true} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
@@ -74,9 +83,17 @@ export function PaymentDetailsDialog({ payment, onClose }: PaymentDetailsDialogP
               تفاصيل الدفعة
             </DialogTitle>
           </div>
-          <Button onClick={onClose} size="sm" variant="ghost">
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            {payment.status === "paid" && (
+              <Button onClick={() => setShowReceipt(true)} size="sm" className="bg-gradient-primary">
+                <Printer className="h-4 w-4 mr-1" />
+                طباعة إيصال
+              </Button>
+            )}
+            <Button onClick={onClose} size="sm" variant="ghost">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -105,12 +122,12 @@ export function PaymentDetailsDialog({ payment, onClose }: PaymentDetailsDialogP
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-sm text-muted-foreground">تاريخ الاستحقاق</p>
-                  <p className="font-medium">{payment.dueDate}</p>
+                  <p className="font-medium" dir="ltr">{formatDateDDMMYYYY(payment.dueDate)}</p>
                 </div>
                 {payment.paidDate && (
                   <div>
                     <p className="text-sm text-muted-foreground">تاريخ الدفع</p>
-                    <p className="font-medium">{payment.paidDate}</p>
+                    <p className="font-medium" dir="ltr">{formatDateDDMMYYYY(payment.paidDate)}</p>
                   </div>
                 )}
               </div>

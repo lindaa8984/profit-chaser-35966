@@ -8,6 +8,7 @@ import { useApp } from "@/contexts/AppContext";
 import { MaintenanceExportDialog } from "@/components/MaintenanceExportDialog";
 import { BackupDialog } from "@/components/BackupDialog";
 import { IntelligentImportDialog } from "@/components/IntelligentImportDialog";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 export default function Maintenance() {
   const { maintenanceRequests, properties } = useApp();
@@ -121,12 +122,12 @@ export default function Maintenance() {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar className="h-4 w-4" />
-                تاريخ الطلب: {request.requestDate}
+                تاريخ الطلب: {formatDateDDMMYYYY(request.requestDate)}
               </div>
               {request.completedDate && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Calendar className="h-4 w-4" />
-                  تاريخ الإنجاز: {request.completedDate}
+                  تاريخ الإنجاز: {formatDateDDMMYYYY(request.completedDate)}
                 </div>
               )}
               <div className="flex gap-2 pt-3">

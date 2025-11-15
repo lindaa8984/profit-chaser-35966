@@ -15,12 +15,14 @@ import {
   Building,
   Phone,
   Mail,
-  FileText
+  FileText,
+  Download
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/contexts/AppContext";
 import { useToast } from "@/hooks/use-toast";
 import type { Unit, Property } from "@/contexts/AppContext";
-import { format } from "date-fns";
+import { formatDateDDMMYYYY, parseDateDDMMYYYY } from "@/lib/utils";
 
 interface UnitDetailsDialogProps {
   unit: Unit;
@@ -30,26 +32,102 @@ interface UnitDetailsDialogProps {
 }
 
 export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDetailsDialogProps) {
-  const { clients, contracts, payments, updateContract } = useApp();
+  const { clients, contracts, payments, updateContract, updateProperty } = useApp();
   const { toast } = useToast();
   const [showEndContractDialog, setShowEndContractDialog] = useState(false);
 
-  // Get unit's contract and client data
-  const unitContract = contracts.find(c => c.propertyId === property.id && c.unitNumber === unit.number);
+  // Get unit's active contract and client data
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const unitContract = contracts.find(c => {
+    const endDate = new Date(c.endDate);
+    endDate.setHours(0, 0, 0, 0);
+    
+    return c.propertyId === property.id && 
+      c.unitNumber === unit.number &&
+      endDate >= today &&
+      c.status !== 'terminated';
+  });
+  
   const client = unitContract ? clients.find(c => c.id === unitContract.clientId) : null;
-  const unitPayments = unitContract ? payments.filter(p => p.contractId === unitContract.id) : [];
+  
+  // Get payments from contract's paymentDates/paymentAmounts and sync status with actual records
+  const getContractPayments = () => {
+    if (!unitContract) return [];
 
-  const handleEndContract = () => {
+    const paymentDatesStr = unitContract.paymentDates || '';
+    const paymentAmountsStr = unitContract.paymentAmounts || '';
+
+    if (!paymentDatesStr) return [];
+
+    const dates = paymentDatesStr
+      .split(',')
+      .map(d => d.trim())
+      .filter(Boolean);
+
+    const amounts = paymentAmountsStr
+      ? paymentAmountsStr.split(',').map(a => parseFloat(a.trim()))
+      : [];
+
+    // Normalize dates to ISO for reliable matching, but always DISPLAY original contract dates
+    const isoDates = dates.map(d => parseDateDDMMYYYY(d) || d);
+
+    const paymentsForContract = payments
+      .filter(p => p.contractId === unitContract.id)
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+    return isoDates.map((isoDate, index) => {
+      // Try to match by exact date first (supports both ISO and original)
+      const matchByDate = paymentsForContract.find(p => p.dueDate === isoDate || p.dueDate === dates[index]);
+      // Fallback to index-based matching (keeps statuses aligned after manual edits)
+      const matchByIndex = paymentsForContract[index];
+      const matched = matchByDate || matchByIndex;
+
+      return {
+        id: matched?.id || `temp-${index}`,
+        contractId: unitContract.id,
+        amount: (amounts[index] ?? matched?.amount ?? 0),
+        currency: unitContract.currency,
+        dueDate: dates[index], // Display exactly as saved in contract
+        paidDate: matched?.paidDate,
+        paymentMethod: unitContract.paymentMethod,
+        status: (matched?.status || 'pending') as 'paid' | 'pending' | 'scheduled' | 'overdue',
+      };
+    });
+  };
+
+  const unitPayments = unitContract ? getContractPayments() : [];
+
+  const handleEndContract = async () => {
     if (unitContract) {
-      const today = new Date().toISOString().split('T')[0];
-      const updatedContract = { ...unitContract, endDate: today };
-      updateContract(unitContract.id, updatedContract);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      
+      const updatedContract = { 
+        ...unitContract, 
+        endDate: yesterdayStr,
+        status: 'terminated' as const
+      };
+      await updateContract(unitContract.id, updatedContract);
+      
+      // Update unit to be available
+      const updatedUnits = property.units?.map(u => 
+        u.number === unit.number 
+          ? { ...u, isAvailable: true }
+          : u
+      );
+      
+      if (updatedUnits) {
+        await updateProperty(property.id, { units: updatedUnits });
+      }
       
       setShowEndContractDialog(false);
       onOpenChange(false);
       toast({
         title: "تم إنهاء العقد",
-        description: `تم إنهاء عقد الوحدة ${unit.number} بنجاح`
+        description: `تم إنهاء عقد الوحدة ${unit.number} وإتاحتها للإيجار`
       });
     }
   };
@@ -179,7 +257,7 @@ export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDe
                         <Calendar className="h-4 w-4" />
                         تاريخ البداية:
                       </Label>
-                      <p className="font-medium">{format(new Date(unitContract.startDate), 'dd/MM/yyyy')}</p>
+                      <p className="font-medium">{formatDateDDMMYYYY(unitContract.startDate)}</p>
                     </div>
                     
                     <div>
@@ -187,7 +265,7 @@ export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDe
                         <Calendar className="h-4 w-4" />
                         تاريخ النهاية:
                       </Label>
-                      <p className="font-medium">{format(new Date(unitContract.endDate), 'dd/MM/yyyy')}</p>
+                      <p className="font-medium">{formatDateDDMMYYYY(unitContract.endDate)}</p>
                     </div>
                     
                     <div>
@@ -203,6 +281,55 @@ export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDe
                       <p className="font-medium">{unitContract.paymentMethod}</p>
                     </div>
                   </div>
+
+                  {/* Contract File Attachment */}
+                  {unitContract.contractFileUrl && (
+                    <div className="pt-4 border-t">
+                      <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-primary" />
+                          <span className="text-sm font-medium">ملف العقد المرفق</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              const { data, error } = await supabase.storage
+                                .from('contracts')
+                                .download(unitContract.contractFileUrl!);
+
+                              if (error) throw error;
+
+                              const url = window.URL.createObjectURL(data);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `contract_${unitContract.id}.pdf`;
+                              document.body.appendChild(a);
+                              a.click();
+                              window.URL.revokeObjectURL(url);
+                              document.body.removeChild(a);
+
+                              toast({
+                                title: "تم بنجاح",
+                                description: "تم تحميل ملف العقد"
+                              });
+                            } catch (error) {
+                              console.error('Error downloading file:', error);
+                              toast({
+                                title: "خطأ",
+                                description: "فشل تحميل الملف",
+                                variant: "destructive"
+                              });
+                            }
+                          }}
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          تحميل
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Contract Actions */}
                   <div className="flex gap-3 pt-4 border-t">
@@ -253,7 +380,7 @@ export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDe
                     </div>
                     
                     <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg text-center">
-                      <div className="text-warning font-medium">الدفعات المستحقة</div>
+                      <div className="text-warning font-medium">الدفعات المجدولة</div>
                       <div className="text-warning text-2xl font-bold">{pendingPayments.length}</div>
                       <div className="text-warning text-sm">
                         {pendingPayments.reduce((sum, p) => sum + p.amount, 0).toLocaleString()} {unitContract?.currency}
@@ -275,7 +402,7 @@ export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDe
                     <h4 className="font-medium">آخر الدفعات:</h4>
                     <div className="max-h-48 overflow-y-auto space-y-2">
                       {unitPayments
-                        .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime())
+                        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
                         .map((payment) => (
                           <div key={payment.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
                             <div className="flex items-center gap-2">
@@ -289,12 +416,12 @@ export function UnitDetailsDialog({ unit, property, open, onOpenChange }: UnitDe
                                 }
                               >
                                 {payment.status === 'paid' ? 'مسدد' : 
-                                 payment.status === 'overdue' ? 'متأخر' : 'مستحق'}
+                                 payment.status === 'overdue' ? 'متأخر' : 'مجدول'}
                               </Badge>
                               <span className="text-sm">{payment.amount.toLocaleString()} {payment.currency}</span>
                             </div>
-                            <span className="text-sm text-muted-foreground">
-                              {format(new Date(payment.dueDate), 'dd/MM/yyyy')}
+                            <span className="text-sm text-muted-foreground" dir="ltr">
+                              {formatDateDDMMYYYY(payment.dueDate)}
                             </span>
                           </div>
                         ))}

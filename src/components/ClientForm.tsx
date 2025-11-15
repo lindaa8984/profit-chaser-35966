@@ -9,7 +9,7 @@ import { useApp } from "@/contexts/AppContext";
 import { toast } from "@/hooks/use-toast";
 
 export function ClientForm() {
-  const { addClient } = useApp();
+  const { addClient, clients } = useApp();
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -27,6 +27,19 @@ export function ClientForm() {
     if (!formData.name || !formData.phone || !formData.type) {
       toast({ title: "خطأ", description: "يرجى إدخال الاسم ورقم الجوال ونوع العميل", variant: "destructive" });
       return;
+    }
+
+    // التحقق من تكرار رقم الهوية فقط (إذا كان مدخلاً)
+    if (formData.idNumber) {
+      const duplicateId = clients.find(c => c.idNumber === formData.idNumber);
+      if (duplicateId) {
+        toast({ 
+          title: "خطأ", 
+          description: `رقم الهوية مسجل مسبقاً للعميل: ${duplicateId.name}`, 
+          variant: "destructive" 
+        });
+        return;
+      }
     }
 
     addClient({

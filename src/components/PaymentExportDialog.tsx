@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Download, Cloud, FileSpreadsheet } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import * as XLSX from 'xlsx';
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 interface PaymentExportDialogProps {
   open: boolean;
@@ -32,7 +33,7 @@ export function PaymentExportDialog({ open, onClose }: PaymentExportDialogProps)
   const getStatusLabel = (status: string) => {
     switch(status) {
       case "paid": return "مدفوع";
-      case "pending": return "معلق";
+      case "pending": return "مجدول";
       case "overdue": return "متأخر";
       default: return status;
     }
@@ -53,8 +54,8 @@ export function PaymentExportDialog({ open, onClose }: PaymentExportDialogProps)
       "اسم العميل": getClientName(payment.contractId),
       "المبلغ": `${payment.amount.toLocaleString()} ${currencySymbols[currency as keyof typeof currencySymbols]}`,
       "الحالة": getStatusLabel(payment.status),
-      "تاريخ الاستحقاق": payment.dueDate,
-      "تاريخ الدفع": payment.paidDate || "غير مدفوع",
+      "تاريخ الاستحقاق": formatDateDDMMYYYY(payment.dueDate),
+      "تاريخ الدفع": payment.paidDate ? formatDateDDMMYYYY(payment.paidDate) : "غير مدفوع",
       "طريقة الدفع": getPaymentMethodLabel(payment.paymentMethod)
     }));
   };

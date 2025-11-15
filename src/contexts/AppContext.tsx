@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
+const supabase = supabaseClient as any;
 import { toast } from 'sonner';
 import { 
   useSupabaseProperties, 
@@ -15,10 +16,12 @@ export interface Unit {
     floor: number;
     isAvailable: boolean;
     rentedBy?: number; // Client ID
+    unitType?: 'residential' | 'commercial';
 }
 
 export interface Property {
     id: number;
+    uuid?: string; // Supabase UUID
     name: string;
     type: string;
     location: string;
@@ -61,10 +64,12 @@ export interface Contract {
     numberOfPayments?: string;
     checkDates?: string;
     paymentDates?: string;
+    paymentAmounts?: string; // ✅ المبالغ المخصصة للدفعات
     checkNumbers?: string;
     bankName?: string;
     status?: 'active' | 'terminated';
     terminatedDate?: string;
+    contractFileUrl?: string | null;
 }
 
 export interface Payment {
@@ -90,7 +95,15 @@ export interface MaintenanceRequest {
     completedDate?: string;
 }
 
+export interface Company {
+    id: string;
+    name: string;
+    name_en?: string;
+    logo_url?: string;
+}
+
 interface AppContextType {
+    userCompany: Company | null;
     properties: Property[];
     clients: Client[];
     contracts: Contract[];
@@ -126,6 +139,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
+    const [userCompany, setUserCompany] = useState<Company | null>(null);
     
     // Import Supabase hooks for data persistence
     const { 
@@ -133,7 +147,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addProperty: addSupabaseProperty,
       updateProperty: updateSupabaseProperty,
       deleteProperty: deleteSupabaseProperty,
-      refetch: refetchProperties
+      refetch: refetchProperties,
+      syncUnitsWithContracts
     } = useSupabaseProperties();
     
     const { 
@@ -191,6 +206,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('language', language);
         document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
     }, [language]);
+
+    // Load user's company data
+    useEffect(() => {
+        const loadUserCompany = async () => {
+            if (!user?.id) return;
+            
+            try {
+                // Get user's company from company_users
+                const { data: companyUserData } = await supabase
+                    .from('company_users')
+                    .select('company_id')
+                    .eq('user_id', user.id)
+                    .eq('is_active', true)
+                    .single();
+                
+                if (companyUserData?.company_id) {
+                    // Get company details
+                    const { data: companyData } = await supabase
+                        .from('companies')
+                        .select('id, name, name_en, logo_url')
+                        .eq('id', companyUserData.company_id)
+                        .single();
+                    
+                    if (companyData) {
+                        setUserCompany(companyData);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading company:', error);
+            }
+        };
+        
+        loadUserCompany();
+    }, [user?.id]);
+
+    // تصحيح تزامن حالة الوحدات مع العقود النشطة عند تحميل البيانات
+    useEffect(() => {
+      if (supabaseProperties.length > 0 && supabaseContracts.length >= 0 && syncUnitsWithContracts) {
+        // تصحيح بيانات كل عقار
+        supabaseProperties.forEach(property => {
+          if (property.uuid) {
+            const propertyContracts = supabaseContracts.filter(c => c.propertyId === property.id);
+            syncUnitsWithContracts(property.uuid, propertyContracts);
+          }
+        });
+      }
+    }, [supabaseProperties, supabaseContracts, syncUnitsWithContracts]);
 
     const generateUnits = (floors: number, unitsPerFloor: number, unitFormat: string, availableUnits?: number) => {
         const units: Unit[] = [];
@@ -255,30 +317,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const reserveUnit = async (propertyId: number, unitNumber: string, clientId: number): Promise<boolean> => {
-        // Check if client already has this unit
-        const existingContract = supabaseContracts.find(c => 
-            c.propertyId === propertyId && 
-            c.clientId === clientId &&
-            c.unitNumber === unitNumber &&
-            new Date(c.endDate) > new Date() &&
-            c.status !== 'terminated'
-        );
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Check if client already has an active contract on this unit
+        const existingContract = supabaseContracts.find(c => {
+            const endDate = new Date(c.endDate);
+            endDate.setHours(0, 0, 0, 0);
+            
+            return c.propertyId === propertyId && 
+                c.clientId === clientId &&
+                c.unitNumber === unitNumber &&
+                endDate >= today &&
+                c.status !== 'terminated';
+        });
         
         if (existingContract) {
+            console.log('عقد موجود:', existingContract);
             toast.error('هذا العميل لديه عقد نشط على هذه الوحدة بالفعل');
             return false;
         }
 
-        // Check if unit is occupied by any contract
-        const activeContract = supabaseContracts.find(c => 
-            c.propertyId === propertyId && 
-            c.unitNumber === unitNumber &&
-            new Date(c.endDate) > new Date() &&
-            c.status !== 'terminated'
-        );
+        // Check if unit is occupied by ANY active contract
+        const activeContract = supabaseContracts.find(c => {
+            const endDate = new Date(c.endDate);
+            endDate.setHours(0, 0, 0, 0);
+            
+            return c.propertyId === propertyId && 
+                c.unitNumber === unitNumber &&
+                endDate >= today &&
+                c.status !== 'terminated';
+        });
         
         if (activeContract) {
-            toast.error('هذه الوحدة محجوزة بالفعل');
+            console.log('الوحدة محجوزة بواسطة:', activeContract);
+            toast.error(`هذه الوحدة محجوزة بالفعل حتى ${activeContract.endDate}`);
             return false;
         }
 
@@ -472,6 +545,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const updatePayment = async (id: number, updatedPayment: Partial<Payment>) => {
         await updateSupabasePayment(id, updatedPayment);
+        await refetchPayments();
     };
 
     const renewContract = async (id: number, newEndDate: string) => {
@@ -512,6 +586,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, [supabasePayments]);
 
     const contextValue: AppContextType = {
+        userCompany,
         properties: supabaseProperties,
         clients: supabaseClients,
         contracts: supabaseContracts,

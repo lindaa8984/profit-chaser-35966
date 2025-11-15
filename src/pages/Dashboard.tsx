@@ -17,18 +17,29 @@ import { useNavigate } from "react-router-dom";
 import { OccupancyChart } from "@/components/OccupancyChart";
 import { RevenueChart } from "@/components/RevenueChart";
 import { QuickEntryDialog } from "@/components/QuickEntryDialog";
+import { useNotifications } from "@/hooks/useNotifications";
+import { useAuth } from "@/contexts/AuthContext";
+import { t } from "@/lib/translations";
 
 export default function Dashboard() {
-  const { properties, contracts, payments, maintenanceRequests, currency } = useApp();
+  const { properties, contracts, payments, maintenanceRequests, currency, language, userCompany } = useApp();
   const navigate = useNavigate();
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   
-  const currencySymbols = useMemo(() => ({
-    SAR: "ر.س",
-    USD: "USD", 
-    EUR: "€",
-    AED: "د.إ"
-  }), []);
+  // تفعيل نظام الإشعارات
+  useNotifications();
+  
+  // تحديد العنوان بناءً على شركة المستخدم
+  const pageTitle = userCompany 
+    ? (language === "ar" ? userCompany.name : (userCompany.name_en || userCompany.name))
+    : (language === "ar" ? "DIG لإدارة العقارات" : "DIG Property Management");
+  
+  const getCurrencySymbol = useCallback((code: string) => {
+    const ar = { SAR: "ر.س", AED: "د.إ", USD: "دولار", EUR: "€" } as const;
+    const en = { SAR: "SAR", AED: "AED", USD: "USD", EUR: "€" } as const;
+    const map = language === "ar" ? ar : en;
+    return (map as any)[code] ?? code;
+  }, [language]);
   
   // تحسين الحسابات باستخدام useMemo لتجنب إعادة الحساب غير الضرورية
   const dashboardStats = useMemo(() => {
@@ -38,33 +49,27 @@ export default function Dashboard() {
     const rentedUnits = properties.reduce((sum, prop) => sum + prop.rentedUnits, 0);
     const totalContracts = contracts.length;
     
-    // حساب الإيراد الشهري من الدفعات المؤكدة فقط
-    const monthlyRevenue = payments
-      .filter(payment => payment.status === 'paid')
-      .reduce((sum, payment) => {
-        const payment_contract = contracts.find(c => c.id === payment.contractId);
-        if (!payment_contract) return sum;
-        
-        if (payment_contract.paymentSchedule === "monthly") {
-          return sum + payment.amount;
-        } else if (payment_contract.paymentSchedule === "quarterly") {
-          return sum + (payment.amount / 3);
-        } else if (payment_contract.paymentSchedule === "semi_annual") {
-          return sum + (payment.amount / 6);
-        } else if (payment_contract.paymentSchedule === "annually") {
-          return sum + (payment.amount / 12);
-        }
-        
-        return sum + payment.amount;
-      }, 0);
+    // حساب الإيراد الشهري من الدفعات المؤكدة للشهر الحالي فقط
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     
-    // حساب العقود على وشك الانتهاء (خلال 30 يوم)
+    const monthlyRevenue = payments
+      .filter(payment => {
+        if (payment.status !== 'paid' || !payment.paidDate) return false;
+        
+        const paidDate = new Date(payment.paidDate);
+        return paidDate >= currentMonthStart && paidDate <= currentMonthEnd;
+      })
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    
+    // حساب العقود على وشك الانتهاء (خلال 7 أيام)
     const upcomingExpirations = contracts.filter(contract => {
       const endDate = new Date(contract.endDate);
       const today = new Date();
       const diffTime = endDate.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays <= 30 && diffDays > 0;
+      return diffDays <= 7 && diffDays > 0;
     }).length;
     
     // حساب المدفوعات المستحقة خلال 5 أيام من اليوم
@@ -113,8 +118,8 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">لوحة التحكم</h1>
-          <p className="text-muted-foreground">نظرة عامة على إدارة العقارات</p>
+          <h1 className="text-3xl font-bold text-foreground">{t("dashboard.title", language)}</h1>
+          <p className="text-muted-foreground">{pageTitle} — {t("dashboard.subtitle", language)}</p>
         </div>
         <Button 
           onClick={() => setQuickEntryOpen(true)}
@@ -122,38 +127,38 @@ export default function Dashboard() {
           size="lg"
         >
           <Zap className="h-5 w-5 mr-2" />
-          إدخال سريع
+          {t("dashboard.quickEntry", language)}
         </Button>
       </div>
 
       {/* Statistics Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="إجمالي العقارات"
+          title={t("dashboard.totalProperties", language)}
           value={totalProperties.toString()}
           icon={Building2}
-          change={`${totalUnits} وحدة إجمالية`}
+          change={`${totalUnits} ${t("dashboard.totalUnits", language)}`}
           changeType="positive"
         />
         <StatCard
-          title="الوحدات المتاحة"
+          title={t("dashboard.availableUnits", language)}
           value={availableUnits.toString()}
           icon={Home}
-          change={`من ${totalUnits} وحدة`}
+          change={t("dashboard.fromUnits", language, { count: totalUnits })}
           changeType="positive"
         />
         <StatCard
-          title="عقود على وشك الانتهاء"
+          title={t("dashboard.contractsExpiringSoon", language)}
           value={upcomingExpirations.toString()}
           icon={CalendarX}
-          change="تحتاج متابعة"
+          change={t("dashboard.needsFollowup", language)}
           changeType={upcomingExpirations > 0 ? "negative" : "positive"}
         />
         <StatCard
-          title="الإيراد الشهري"
-          value={`${Math.round(monthlyRevenue).toLocaleString()} ${currencySymbols[currency as keyof typeof currencySymbols]}`}
+          title={t("dashboard.monthlyRevenue", language)}
+          value={`${Math.round(monthlyRevenue).toLocaleString()} ${getCurrencySymbol(currency)}`}
           icon={CreditCard}
-          change={`من ${totalContracts} عقد`}
+          change={t("dashboard.fromContracts", language, { count: totalContracts })}
           changeType="positive"
         />
       </div>
@@ -164,7 +169,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              النشاط الحديث
+              {t("dashboard.recentActivity", language)}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -192,9 +197,9 @@ export default function Dashboard() {
                   <div key={activity.id} className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                     <div className="w-2 h-2 bg-success rounded-full"></div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium">عقد إيجار جديد</p>
+                      <p className="text-sm font-medium">{t("dashboard.newContract", language)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {property?.name} - {activity.contract.monthlyRent.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+                        {property?.name} - {activity.contract.monthlyRent.toLocaleString()} {getCurrencySymbol(currency)}
                       </p>
                     </div>
                   </div>
@@ -206,9 +211,9 @@ export default function Dashboard() {
                   <div key={activity.id} className="flex items-center gap-3 p-3 bg-secondary rounded-lg">
                     <div className="w-2 h-2 bg-primary rounded-full"></div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium">دفعة مستلمة</p>
+                      <p className="text-sm font-medium">{t("dashboard.paidPayment", language)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {property?.name} - {activity.payment.amount.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+                        {property?.name} - {activity.payment.amount.toLocaleString()} {getCurrencySymbol(currency)}
                       </p>
                     </div>
                   </div>
@@ -223,7 +228,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-warning" />
-              التنبيهات والمهام
+              {t("dashboard.alertsAndTasks", language)}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -235,15 +240,15 @@ export default function Dashboard() {
               >
                 <AlertCircle className="h-4 w-4 text-warning shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">عقود على وشك الانتهاء</p>
+                  <p className="text-sm font-medium text-foreground">{t("dashboard.contractsExpiring", language)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {upcomingExpirations} عقد ينتهي خلال 30 يوم
+                    {t(upcomingExpirations === 1 ? "dashboard.contractExpiresInDays" : "dashboard.contractsExpireInDays", language, { count: upcomingExpirations })}
                   </p>
                 </div>
               </div>
             )}
             
-            {/* المدفوعات المعلقة */}
+            {/* المدفوعات المجدولة */}
             {pendingPayments.length > 0 && (
               <div 
                 className="flex items-center gap-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg cursor-pointer hover:bg-destructive/20 transition-colors"
@@ -251,9 +256,9 @@ export default function Dashboard() {
               >
                 <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">دفعات معلقة</p>
+                  <p className="text-sm font-medium text-foreground">{t("dashboard.scheduledPayments", language)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {pendingPayments.length} دفعة بإجمالي {pendingAmount.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+                    {t("dashboard.paymentsTotal", language, { count: pendingPayments.length, amount: `${pendingAmount.toLocaleString()} ${getCurrencySymbol(currency)}` })}
                   </p>
                 </div>
               </div>
@@ -267,7 +272,7 @@ export default function Dashboard() {
                 <div key={request.id} className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
                   <AlertCircle className="h-4 w-4 text-primary shrink-0" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">طلب صيانة جديد</p>
+                    <p className="text-sm font-medium text-foreground">{t("dashboard.newMaintenanceRequest", language)}</p>
                     <p className="text-xs text-muted-foreground">{property?.name} - {request.description}</p>
                   </div>
                 </div>
@@ -277,8 +282,8 @@ export default function Dashboard() {
             {/* رسالة في حالة عدم وجود تنبيهات */}
             {upcomingExpirations === 0 && pendingPayments.length === 0 && maintenanceRequests.filter(r => r.status === "pending").length === 0 && (
               <div className="text-center py-8">
-                <p className="text-sm text-muted-foreground">لا توجد تنبيهات حالياً</p>
-                <p className="text-xs text-muted-foreground">جميع الأمور تسير بشكل طبيعي</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.noNotifications", language)}</p>
+                <p className="text-xs text-muted-foreground">{t("dashboard.allSystemsNormal", language)}</p>
               </div>
             )}
           </CardContent>
