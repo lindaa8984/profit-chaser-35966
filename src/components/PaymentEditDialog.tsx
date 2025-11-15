@@ -23,6 +23,7 @@ interface Payment {
   checkNumber?: string;
   bankName?: string;
   status: 'paid' | 'pending' | 'scheduled' | 'overdue';
+  notes?: string;
 }
 
 interface PaymentEditDialogProps {
@@ -39,7 +40,8 @@ export function PaymentEditDialog({ payment, open, onClose }: PaymentEditDialogP
     dueDate: payment?.dueDate || '',
     paymentMethod: payment?.paymentMethod || 'cash',
     bankName: payment?.bankName || '',
-    status: (payment?.status || 'pending') as 'paid' | 'pending' | 'scheduled' | 'overdue'
+    status: (payment?.status || 'pending') as 'paid' | 'pending' | 'scheduled' | 'overdue',
+    notes: payment?.notes || ''
   });
 
   // تحديث formData عند تغيير payment
@@ -50,7 +52,8 @@ export function PaymentEditDialog({ payment, open, onClose }: PaymentEditDialogP
         dueDate: payment.dueDate,
         paymentMethod: payment.paymentMethod,
         bankName: payment.bankName || '',
-        status: payment.status
+        status: payment.status,
+        notes: payment.notes || ''
       });
     }
   }, [payment]);
@@ -100,7 +103,8 @@ export function PaymentEditDialog({ payment, open, onClose }: PaymentEditDialogP
       dueDate: formData.dueDate,
       paymentMethod: formData.paymentMethod,
       bankName: formData.bankName,
-      status: formData.status as 'paid' | 'pending' | 'scheduled' | 'overdue'
+      status: formData.status as 'paid' | 'pending' | 'scheduled' | 'overdue',
+      notes: formData.notes
     });
     
     // الانتظار قليلاً لضمان تحديث البيانات
@@ -207,6 +211,17 @@ export function PaymentEditDialog({ payment, open, onClose }: PaymentEditDialogP
                 <SelectItem value="overdue">متأخر</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">ملاحظات</Label>
+            <textarea
+              id="notes"
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="أضف ملاحظات إضافية (اختياري)"
+            />
           </div>
         </div>
         
