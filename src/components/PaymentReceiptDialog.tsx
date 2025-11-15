@@ -46,17 +46,19 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
 
   const getClientName = (contractId: number | string) => {
     const contract = getContract(contractId);
-    if (!contract) return "عقد غير موجود";
+    if (!contract) return language === 'ar' ? "عقد غير موجود" : "Contract not found";
     const client = clients.find(c => c.id === contract.clientId);
-    return client ? client.name : "عميل غير موجود";
+    return client ? client.name : (language === 'ar' ? "عميل غير موجود" : "Client not found");
   };
 
   const getPropertyName = (contractId: number | string) => {
     const contract = getContract(contractId);
-    if (!contract) return "عقار غير موجود";
+    if (!contract) return language === 'ar' ? "عقار غير موجود" : "Property not found";
     const property = properties.find(p => p.id === contract.propertyId);
-    return property ? property.name : "عقار غير موجود";
+    return property ? property.name : (language === 'ar' ? "عقار غير موجود" : "Property not found");
   };
+
+  const contract = getContract(payment.contractId);
 
   const getPaymentMethodLabel = (method: string) => {
     switch(method) {
@@ -166,6 +168,38 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
               </div>
             </div>
           </div>
+
+          {/* Contract Period */}
+          {contract && (
+            <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+              <div className="flex items-center gap-2 text-primary font-semibold mb-3">
+                <Calendar className="h-5 w-5" />
+                <span>{language === 'ar' ? 'فترة التعاقد' : 'Contract Period'}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground mb-1">
+                    {language === 'ar' ? 'من تاريخ' : 'From'}
+                  </p>
+                  <p className="font-medium text-base" dir="ltr">{formatDateDDMMYYYY(contract.startDate)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground mb-1">
+                    {language === 'ar' ? 'إلى تاريخ' : 'To'}
+                  </p>
+                  <p className="font-medium text-base" dir="ltr">{formatDateDDMMYYYY(contract.endDate)}</p>
+                </div>
+              </div>
+              {contract.unitNumber && (
+                <div className="mt-3 pt-3 border-t border-primary/10">
+                  <p className="text-muted-foreground text-sm mb-1">
+                    {language === 'ar' ? 'رقم الوحدة' : 'Unit Number'}
+                  </p>
+                  <p className="font-medium">{contract.unitNumber}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <Separator />
 
