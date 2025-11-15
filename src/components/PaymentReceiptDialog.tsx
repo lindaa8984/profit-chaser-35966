@@ -26,10 +26,18 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
   const contentRef = useRef<HTMLDivElement>(null);
 
   const currencySymbols = {
-    SAR: "ر.س",
-    USD: "USD",
-    EUR: "€",
-    AED: "د.إ"
+    ar: {
+      SAR: "ر.س",
+      USD: "دولار",
+      EUR: "يورو",
+      AED: "د.إ"
+    },
+    en: {
+      SAR: "SAR",
+      USD: "USD",
+      EUR: "EUR",
+      AED: "AED"
+    }
   };
 
   const getContract = (contractId: number | string) => {
@@ -52,10 +60,10 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
 
   const getPaymentMethodLabel = (method: string) => {
     switch(method) {
-      case "cash": return "نقدي";
-      case "cheque": return "شيك";
-      case "bank_transfer": return "حوالة بنكية";
-      case "card": return "بطاقة ائتمان";
+      case "cash": return t('receipt.cash', language);
+      case "cheque": return t('receipt.cheque', language);
+      case "bank_transfer": return t('receipt.bankTransfer', language);
+      case "card": return t('receipt.card', language);
       default: return method;
     }
   };
@@ -76,7 +84,7 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
     `
   });
 
-  const currentDate = new Date().toLocaleString('ar-EG', {
+  const currentDate = new Date().toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -90,7 +98,7 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
         <DialogHeader className="flex flex-row items-center justify-between print:hidden">
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
-            إيصال الدفع
+            {t('receipt.title', language)}
           </DialogTitle>
           <div className="flex gap-2">
             <Button onClick={handlePrint} size="sm" className="bg-gradient-primary">
@@ -108,13 +116,13 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
           {/* Header */}
           <div className="text-center space-y-3 border-b-2 border-primary pb-4">
             <h1 className="text-3xl font-bold text-primary">
-              {language === 'ar' ? 'إيصال دفع' : 'PAYMENT RECEIPT'}
+              {t('receipt.title', language)}
             </h1>
             <p className="text-2xl font-semibold text-foreground">
               {t('layout.companyName', language)}
             </p>
             <p className="text-sm text-muted-foreground">
-              {language === 'ar' ? 'PAYMENT RECEIPT' : 'إيصال دفع'}
+              {t('receipt.titleEnglish', language)}
             </p>
           </div>
 
@@ -122,13 +130,13 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">
-                {language === 'ar' ? 'رقم الإيصال' : 'Receipt Number'}
+                {t('receipt.receiptNumber', language)}
               </p>
               <p className="font-bold text-lg" dir="ltr">#{payment.id}</p>
             </div>
             <div className="text-left" dir="ltr">
               <p className="text-muted-foreground">
-                {language === 'ar' ? 'تاريخ الإصدار' : 'Issue Date'}
+                {t('receipt.issueDate', language)}
               </p>
               <p className="font-medium">{currentDate}</p>
             </div>
@@ -141,7 +149,7 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-primary font-semibold">
                 <User className="h-5 w-5" />
-                <span>{language === 'ar' ? 'معلومات العميل' : 'Client Information'}</span>
+                <span>{t('receipt.clientInfo', language)}</span>
               </div>
               <div className="bg-muted/30 p-4 rounded-lg">
                 <p className="font-medium text-lg">{getClientName(payment.contractId)}</p>
@@ -151,7 +159,7 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-primary font-semibold">
                 <Building2 className="h-5 w-5" />
-                <span>{language === 'ar' ? 'العقار' : 'Property'}</span>
+                <span>{t('receipt.property', language)}</span>
               </div>
               <div className="bg-muted/30 p-4 rounded-lg">
                 <p className="font-medium text-lg">{getPropertyName(payment.contractId)}</p>
@@ -165,22 +173,22 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-primary font-semibold text-lg">
               <CreditCard className="h-5 w-5" />
-              <span>{language === 'ar' ? 'تفاصيل الدفعة' : 'Payment Details'}</span>
+              <span>{t('receipt.paymentDetails', language)}</span>
             </div>
 
             <div className="bg-gradient-to-br from-primary/5 to-primary/10 p-6 rounded-lg border border-primary/20 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">
-                    {language === 'ar' ? 'المبلغ المدفوع' : 'Amount Paid'}
+                    {t('receipt.amountPaid', language)}
                   </p>
                   <p className="text-3xl font-bold text-primary">
-                    {payment.amount.toLocaleString()} {currencySymbols[currency as keyof typeof currencySymbols]}
+                    {payment.amount.toLocaleString()} {currencySymbols[language as keyof typeof currencySymbols][currency as keyof typeof currencySymbols.ar]}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">
-                    {language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}
+                    {t('receipt.paymentMethod', language)}
                   </p>
                   <p className="text-xl font-semibold">{getPaymentMethodLabel(payment.paymentMethod)}</p>
                 </div>
@@ -190,7 +198,7 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
                 <div>
                   <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    {language === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}
+                    {t('receipt.dueDate', language)}
                   </p>
                   <p className="font-medium" dir="ltr">{formatDateDDMMYYYY(payment.dueDate)}</p>
                 </div>
@@ -198,7 +206,7 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
                   <div>
                     <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      {language === 'ar' ? 'تاريخ الدفع' : 'Payment Date'}
+                      {t('receipt.paymentDate', language)}
                     </p>
                     <p className="font-medium" dir="ltr">{formatDateDDMMYYYY(payment.paidDate)}</p>
                   </div>
@@ -208,13 +216,13 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
               {payment.paymentMethod === "cheque" && payment.checkNumber && (
                 <div className="bg-background p-3 rounded border border-border">
                   <p className="text-sm text-muted-foreground mb-1">
-                    {language === 'ar' ? 'رقم الشيك' : 'Check Number'}
+                    {t('receipt.checkNumber', language)}
                   </p>
                   <p className="font-semibold text-lg">{payment.checkNumber}</p>
                   {payment.bankName && (
                     <>
                       <p className="text-sm text-muted-foreground mt-2 mb-1">
-                        {language === 'ar' ? 'اسم البنك' : 'Bank Name'}
+                        {t('receipt.bankName', language)}
                       </p>
                       <p className="font-medium">{payment.bankName}</p>
                     </>
@@ -224,19 +232,31 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
             </div>
           </div>
 
+          {/* Notes Section */}
+          {payment.notes && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-primary font-semibold">
+                  <FileText className="h-4 w-4" />
+                  <span>{t('receipt.notesLabel', language)}</span>
+                </div>
+                <div className="bg-muted/30 p-4 rounded-lg">
+                  <p className="text-sm whitespace-pre-wrap">{payment.notes}</p>
+                </div>
+              </div>
+            </>
+          )}
+
           <Separator />
 
           {/* Footer */}
           <div className="text-center space-y-2 pt-6 border-t border-border">
             <p className="text-sm text-muted-foreground">
-              {language === 'ar' 
-                ? 'هذا إيصال رسمي يؤكد استلام المبلغ المذكور أعلاه' 
-                : 'This is an official receipt confirming receipt of the above amount'}
+              {t('receipt.footer', language)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {language === 'ar'
-                ? 'تم إصدار هذا الإيصال إلكترونياً ولا يحتاج إلى توقيع'
-                : 'This receipt is issued electronically and does not require a signature'}
+              {t('receipt.electronicNote', language)}
             </p>
           </div>
         </div>
