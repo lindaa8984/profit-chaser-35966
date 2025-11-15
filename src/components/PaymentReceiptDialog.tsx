@@ -22,7 +22,7 @@ interface PaymentReceiptDialogProps {
 }
 
 export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogProps) {
-  const { contracts, clients, properties, currency, language } = useApp();
+  const { contracts, clients, properties, currency, language, payments } = useApp();
   const contentRef = useRef<HTMLDivElement>(null);
 
   const currencySymbols = {
