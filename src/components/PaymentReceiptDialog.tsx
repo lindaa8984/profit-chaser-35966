@@ -44,6 +44,29 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
     return contracts.find(c => c.id === (typeof contractId === 'number' ? contractId : parseInt(contractId.slice(0, 8), 16)));
   };
 
+  const getPaymentNumber = () => {
+    const contract = getContract(payment.contractId);
+    if (!contract) return null;
+    
+    const contractPayments = payments
+      .filter(p => p.contractId === payment.contractId)
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+    
+    const currentIndex = contractPayments.findIndex(p => p.id === payment.id);
+    if (currentIndex === -1) return null;
+    
+    return {
+      current: currentIndex + 1,
+      total: contractPayments.length
+    };
+  };
+
+  const getPaymentPeriod = () => {
+    const dueDate = new Date(payment.dueDate);
+    const monthName = dueDate.toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US', { month: 'long', year: 'numeric' });
+    return monthName;
+  };
+
   const getClientName = (contractId: number | string) => {
     const contract = getContract(contractId);
     if (!contract) return "عقد غير موجود";
@@ -91,6 +114,10 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
     hour: '2-digit',
     minute: '2-digit'
   });
+
+  const contract = getContract(payment.contractId);
+  const paymentNumber = getPaymentNumber();
+  const paymentPeriod = getPaymentPeriod();
 
   return (
     <Dialog open={true} onOpenChange={() => onClose()}>
@@ -140,6 +167,45 @@ export function PaymentReceiptDialog({ payment, onClose }: PaymentReceiptDialogP
               </p>
               <p className="font-medium">{currentDate}</p>
             </div>
+          </div>
+
+          {/* Contract & Payment Info */}
+          <div className="bg-muted/20 p-4 rounded-lg space-y-2 text-sm">
+            {contract && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">
+                  {language === 'ar' ? 'رقم العقد' : 'Contract Number'}:
+                </span>
+                <span className="font-semibold" dir="ltr">#{contract.id}</span>
+              </div>
+            )}
+            {paymentNumber && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">
+                  {language === 'ar' ? 'رقم الدفعة' : 'Payment Number'}:
+                </span>
+                <span className="font-semibold">
+                  {language === 'ar' 
+                    ? `الدفعة ${paymentNumber.current} من ${paymentNumber.total}`
+                    : `Payment ${paymentNumber.current} of ${paymentNumber.total}`
+                  }
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">
+                {language === 'ar' ? 'الفترة المستحقة' : 'Payment Period'}:
+              </span>
+              <span className="font-semibold">{paymentPeriod}</span>
+            </div>
+            {contract?.unitNumber && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">
+                  {language === 'ar' ? 'رقم الوحدة' : 'Unit Number'}:
+                </span>
+                <span className="font-semibold">{contract.unitNumber}</span>
+              </div>
+            )}
           </div>
 
           <Separator />
