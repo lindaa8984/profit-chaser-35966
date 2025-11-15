@@ -83,6 +83,7 @@ export interface Payment {
     checkNumber?: string;
     bankName?: string;
     status: 'paid' | 'pending' | 'scheduled' | 'overdue';
+    notes?: string;
 }
 
 export interface MaintenanceRequest {
